@@ -1,57 +1,79 @@
 import roslib; roslib.load_manifest('kobuki_testsuite')
-import rospy
-import sys
+import rospy, sys, random
 
 from tf.transformations import euler_from_quaternion
 from math import degrees
 
 from sensor_msgs.msg import Imu
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Int32
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist, Quaternion
+from kobuki_msgs.msg import BumperEvent, CliffEvent
+from enum import Enum
+from robot_pet import wrap_to_pi
+
+class State(Enum):
+    STOP = 0
+    SEARCH = 1
+    ORDERED = 2
+    FOLLOW = 3
 
 
 class Mover:
     def __init__(self):
         rospy.init_node("mover")
-        
-        if (len(sys.argv) > 1):
-            multip = int(sys.argv[1])
-        else:
-            multip = 1
-        self.count = 0
-        self.int_err = 0.0
-        self.avg_err = 0.0
-        self.target_v = 0.09*abs(multip)
-        self.target_w = 0.1*multip
+
+        # Raw data
         self.twist = Twist()
+
+        self.command = Int32()
+        self.imu = Imu()
+        self.bumper = BumperEvent()
+        self.cliff = CliffEvent()
+        self.odom = Odometry()
+
+        # Processed data
+        self.yaw = None
+
+        self.state = State.STOP
+
+        # Subscriber
+        self.bumper_sub = rospy.Subscriber('/mobile_base/events/bumper', BumperEvent, self.bumper_cb)
+        self.cliff_sub = rospy.Subscriber('/mobile_base/events/cliff', CliffEvent, self.cliff_cb)
+        self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_cb)
+        self.imu_sub = rospy.Subscriber("/mobile_base/sensors/imu_data", Imu, self.imu_cb)
+        self.command_sub = rospy.Subscriber("/internal_command", Int32, self.command_cb)
+
+        # Publisher
         self.cmd_vel_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist)
-        self.int_err_pub = rospy.Publisher("/int_err", Float32)
-        self.avg_err_pub = rospy.Publisher("/avg_err", Float32)
-
-        rospy.Subscriber("/mobile_base/sensors/imu_data", Imu, self.ImuCallback)
-        rospy.Subscriber("/odom", Odometry, self.OdomCallback)
-      
-    def OdomCallback(self, data):
-        self.odom = data.pose.pose.position.x
     
-    def ImuCallback(self, data):
-        self.count = self.count + 1
-        if (self.count > 100):
-            self.real_w = data.angular_velocity.z
-            self.int_err += abs(self.target_w - self.real_w)
-            self.avg_err =  self.int_err/(self.count - 100)
-            
-            self.int_err_pub.publish(self.int_err)
-            self.avg_err_pub.publish(self.avg_err)
+    def imu_cb(self, data):
+        self.imu = data
 
-        self.twist.linear.x = self.target_v
-        self.twist.angular.z = self.target_w
-        self.cmd_vel_pub.publish(self.twist)
+    def odom_cb(self, data):
+        self.odom = data
+
+        quat = data.pose.pose.orientation
+        q = [quat.x, quat.y, quat.z, quat.w]
+        roll, pitch, yaw = euler_from_quaternion(q)
+        self.theta = yaw
+      
+    def bumper_cb(self, data):
+        self.bumper = data
+
+    def cliff_cb(self, data):
+        self.cliff = data
+
+    def command_cb(self, data):
+        self.command = data
+
+    def run(self):
+        rate = rospy.Rate(30)
+        while not rospy.is_shutdown():
+            
+            rate.sleep()
 
 
 
 node = Mover()
-
-while not rospy.is_shutdown():
-    rospy.spin()
+node.run()
