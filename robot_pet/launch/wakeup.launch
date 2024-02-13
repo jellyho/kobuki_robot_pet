@@ -1,0 +1,9 @@
+<launch>
+    <!-- Include kobuki minimal node launch file -->
+    <include file="$(find kobuki_node)/launch/minimal.launch"/>
+</launch>
+
+<!-- <launch>
+  <node pkg="" type="gyro_perf.py" name="second" output="screen">
+  </node>
+</launch> -->
