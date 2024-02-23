@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import roslib; roslib.load_manifest('kobuki_testsuite')
 import rospy, sys, random
 
@@ -10,7 +12,6 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist, Quaternion
 from kobuki_msgs.msg import BumperEvent, CliffEvent
 from enum import Enum
-from robot_pet import wrap_to_pi
 
 class State(Enum):
     STOP = 0
@@ -37,6 +38,10 @@ class Mover:
 
         self.state = State.STOP
 
+        # Data for movement
+        self.distance_counter = 0
+        self.distance_target = 0
+
         # Subscriber
         self.bumper_sub = rospy.Subscriber('/mobile_base/events/bumper', BumperEvent, self.bumper_cb)
         self.cliff_sub = rospy.Subscriber('/mobile_base/events/cliff', CliffEvent, self.cliff_cb)
@@ -45,7 +50,7 @@ class Mover:
         self.command_sub = rospy.Subscriber("/internal_command", Int32, self.command_cb)
 
         # Publisher
-        self.cmd_vel_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist)
+        self.cmd_vel_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=1)
     
     def imu_cb(self, data):
         self.imu = data
@@ -66,14 +71,34 @@ class Mover:
 
     def command_cb(self, data):
         self.command = data
+        rospy.loginfo(self.command.data)
+        if self.command.data == 0:
+            self.state = State.STOP
+        elif self.command.data >= 1:
+            self.state = State.ORDERED
+
+    def move(self, vel):
+        twist = Twist()
+        twist.linear.x = vel
+        twist.linear.y = 0
+        twist.linear.z = 0
+        twist.angular.x = 0
+        twist.angular.y = 0
+        twist.angular.z = 0
+        self.cmd_vel_pub.publish(twist)
 
     def run(self):
         rate = rospy.Rate(30)
         while not rospy.is_shutdown():
-            
+            if self.state == State.ORDERED:
+                if self.command.data == 1:
+                    self.move(0.3)
+            else:
+                self.move(0)
             rate.sleep()
 
 
-
-node = Mover()
-node.run()
+if __name__ == "__main__":
+    node = Mover()
+    node.run()
+    rospy.spin()

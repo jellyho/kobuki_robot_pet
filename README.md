@@ -19,6 +19,9 @@ source ~/catkin_ws/devel/setup.bash
 ```
 
 ### 2. Run
+
+> Before run this code, make sure you connected kobuki via usb and turned on!
+
 ```
 roslaunch robot_pet wakeup.launch
 ```

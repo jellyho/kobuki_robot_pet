@@ -1,9 +1,6 @@
 <launch>
     <!-- Include kobuki minimal node launch file -->
     <include file="$(find kobuki_node)/launch/minimal.launch"/>
+    <node pkg="robot_pet" type="mover.py" name="mover.py" output="screen"/>
+    <node pkg="robot_pet" type="perceiver.py" name="perceiver.py" output="screen"/>
 </launch>
-
-<!-- <launch>
-  <node pkg="" type="gyro_perf.py" name="second" output="screen">
-  </node>
-</launch> -->
