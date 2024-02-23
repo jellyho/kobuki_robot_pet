@@ -8,6 +8,7 @@ ros noetic(ubuntu 20.04)
 mkdir catkin_ws
 cd catkin_ws
 mkdir src
+cd src
 git clone https://github.com/jellyho/kobuki_robot_pet.git
 cd ..
 catkin_make
