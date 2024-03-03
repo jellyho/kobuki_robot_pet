@@ -28,12 +28,13 @@ class Percevier:
     def __init__(self):
         rospy.init_node('perceiver', anonymous=True)
         self.command_pub = rospy.Publisher("/internal_command", Int32, queue_size=1)
+        self.target_pub = rospy.Publisher("/target", Twist, queue_size=1)
         self.rospack = rospkg.RosPack()
         self.model_weight_dir = self.rospack.get_path('robot_pet') + '/weight/model2.h5'
         self.torso_size_multiplier = 2.5
         n_landmarks = 33
         self.n_dimensions = 3
-        self.threshold = 0.8
+        self.threshold = 0.6
         self.landmark_names = [
             'nose',
             'left_eye_inner', 'left_eye', 'left_eye_outer',
@@ -86,6 +87,7 @@ class Percevier:
         if not success:
             print('[ERROR] Failed to Read Video feed')
             return 0
+        
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         result = self.pose.process(img_rgb)
         key = 0
@@ -118,12 +120,33 @@ class Percevier:
                                         landmark.z/max_distance, landmark.visibility] for landmark in lm_list]).flatten())
             data = pd.DataFrame([pre_lm], columns=self.col_names)
             predict = self.model.predict(data, verbose=0)[0]
-            key = 0
             if max(predict) > self.threshold:
                 key = predict.argmax()
                 pose_class = self.class_names[key]
+                img = cv2.circle(img, (int((center_x)*self.source_width) ,int(self.source_height / 2)), 10, (0, 255, 0), -1)
+                # publish target
+                twist = Twist()
+                rospy.loginfo(center_x)
+                # twist.linear.x = (center_x - self.source_width) / self.source_width
+                twist.linear.x = -(center_x - 0.5)
+                twist.linear.y = 0
+                twist.linear.z = 0
+                twist.angular.x = 0
+                twist.angular.y = 0
+                twist.angular.z = 0
+                self.target_pub.publish(twist)
             else:
                 pose_class = 'Unknown Pose'
+                twist = Twist()
+                rospy.loginfo(center_x)
+                # twist.linear.x = (center_x - self.source_width) / self.source_width
+                twist.linear.x = 0
+                twist.linear.y = 0
+                twist.linear.z = 0
+                twist.angular.x = 0
+                twist.angular.y = 0
+                twist.angular.z = 0
+                self.target_pub.publish(twist)
             # Show Result
             img = cv2.putText(
                 img, f'{pose_class}',
@@ -131,16 +154,22 @@ class Percevier:
                 2, (255, 0, 255), 2
             )
 
+            
+
         cv2.imshow('Output Image', img)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             return
-        return key
+        
+        
+
+        return key + 2
 
     def run(self):
         while not rospy.is_shutdown():
             key = self.getKey()
             if key:
                 rospy.loginfo("Current pose: {}".format(key))
+                key = 1 # Follow
                 self.command_pub.publish(key)
 
 

@@ -1,0 +1,5 @@
+<launch>
+    <!-- Include kobuki minimal node launch file -->
+    <node pkg="robot_pet" type="mover.py" name="mover.py" output="screen"/>
+    <node pkg="robot_pet" type="perceiver.py" name="perceiver.py" output="screen"/>
+</launch>

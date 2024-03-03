@@ -32,6 +32,7 @@ class Mover:
         self.bumper = BumperEvent()
         self.cliff = CliffEvent()
         self.odom = Odometry()
+        self.target = Twist()
 
         # Processed data
         self.yaw = None
@@ -48,12 +49,16 @@ class Mover:
         self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_cb)
         self.imu_sub = rospy.Subscriber("/mobile_base/sensors/imu_data", Imu, self.imu_cb)
         self.command_sub = rospy.Subscriber("/internal_command", Int32, self.command_cb)
+        self.target_sub = rospy.Subscriber("/target", Twist, self.target_cb)
 
         # Publisher
         self.cmd_vel_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=1)
     
     def imu_cb(self, data):
         self.imu = data
+
+    def target_cb(self, data):
+        self.target = data
 
     def odom_cb(self, data):
         self.odom = data
@@ -74,7 +79,9 @@ class Mover:
         rospy.loginfo(self.command.data)
         if self.command.data == 0:
             self.state = State.STOP
-        elif self.command.data >= 1:
+        elif self.command.data == 1:
+            self.state = State.FOLLOW
+        elif self.command.data >= 2:
             self.state = State.ORDERED
 
     def move(self, vel):
@@ -87,12 +94,32 @@ class Mover:
         twist.angular.z = 0
         self.cmd_vel_pub.publish(twist)
 
+    def follow(self):
+        x = self.target.linear.x
+        rospy.loginfo(f"target : {x}")
+        speed = 0.05
+        if x is None:
+            speed = 0
+            x = 0
+        p = 0.5
+
+        twist = Twist()
+        twist.linear.x = speed
+        twist.linear.y = 0
+        twist.linear.z = 0
+        twist.angular.x = 0
+        twist.angular.y = 0
+        twist.angular.z = x * p
+        self.cmd_vel_pub.publish(twist)
+
     def run(self):
         rate = rospy.Rate(30)
         while not rospy.is_shutdown():
             if self.state == State.ORDERED:
-                if self.command.data == 1:
+                if self.command.data == 1: # foward
                     self.move(0.3)
+            elif self.state == State.FOLLOW:
+                self.follow()
             else:
                 self.move(0)
             rate.sleep()
