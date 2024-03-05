@@ -9,7 +9,8 @@ mkdir catkin_ws
 cd catkin_ws
 mkdir src
 cd src
-git clone https://github.com/jellyho/kobuki_robot_pet.git
+git clone --recursive https://github.com/jellyho/kobuki_robot_pet.git
+sudo apt get install ros-noetic-ecl_core
 cd ..
 catkin_make
 ```
