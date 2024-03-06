@@ -126,51 +126,35 @@ class Percevier:
                 img = cv2.circle(img, (int((center_x)*self.source_width) ,int(self.source_height / 2)), 10, (0, 255, 0), -1)
                 # publish target
                 twist = Twist()
-                rospy.loginfo(center_x)
-                # twist.linear.x = (center_x - self.source_width) / self.source_width
-                twist.linear.x = -(center_x - 0.5)
-                twist.linear.y = 0
-                twist.linear.z = 0
-                twist.angular.x = 0
-                twist.angular.y = 0
-                twist.angular.z = 0
+                twist.angular.z = -(center_x - 0.5)
                 self.target_pub.publish(twist)
+                key += 1
             else:
                 pose_class = 'Unknown Pose'
                 twist = Twist()
-                rospy.loginfo(center_x)
-                # twist.linear.x = (center_x - self.source_width) / self.source_width
-                twist.linear.x = 0
-                twist.linear.y = 0
-                twist.linear.z = 0
-                twist.angular.x = 0
-                twist.angular.y = 0
                 twist.angular.z = 0
                 self.target_pub.publish(twist)
+                key = 0
             # Show Result
             img = cv2.putText(
                 img, f'{pose_class}',
                 (40, 50), cv2.FONT_HERSHEY_PLAIN,
                 2, (255, 0, 255), 2
             )
-
-            
-
         cv2.imshow('Output Image', img)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             return
-        
-        
-
-        return key + 2
+        return key
 
     def run(self):
         while not rospy.is_shutdown():
             key = self.getKey()
             if key:
                 rospy.loginfo("Current pose: {}".format(key))
-                key = 1 # Follow
-                self.command_pub.publish(key)
+                if key in [1, 2, 3, 4]:
+                    self.command_pub.publish(1) # Follow
+                else:
+                    self.command_pub.publish(0) # Stop
 
 
 

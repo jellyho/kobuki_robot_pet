@@ -7,5 +7,6 @@ catkin_package()
 
 install(PROGRAMS scripts/mover.py
                  scripts/perceiver_keyop.py
+                 scripts/perceiver.py
         DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

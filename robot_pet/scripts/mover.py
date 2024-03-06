@@ -11,23 +11,23 @@ from std_msgs.msg import Float32, Int32
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist, Quaternion
 from kobuki_msgs.msg import BumperEvent, CliffEvent
+import numpy as np
 from enum import Enum
 
 class State(Enum):
     STOP = 0
-    SEARCH = 1
-    ORDERED = 2
+    ORDERED = 1
+    EXCUTE = 2
     FOLLOW = 3
 
 
 class Mover:
     def __init__(self):
         rospy.init_node("mover")
-
         # Raw data
         self.twist = Twist()
 
-        self.command = Int32()
+        self.command = 0
         self.imu = Imu()
         self.bumper = BumperEvent()
         self.cliff = CliffEvent()
@@ -40,8 +40,8 @@ class Mover:
         self.state = State.STOP
 
         # Data for movement
-        self.distance_counter = 0
-        self.distance_target = 0
+        self.timer_target = 0.0
+        self.timer = 0.0
 
         # Subscriber
         self.bumper_sub = rospy.Subscriber('/mobile_base/events/bumper', BumperEvent, self.bumper_cb)
@@ -54,11 +54,15 @@ class Mover:
         # Publisher
         self.cmd_vel_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=1)
     
+    def wrap_to_pi(self, x):
+        return np.mod(x+np.pi,2*np.pi)-np.pi
+
     def imu_cb(self, data):
         self.imu = data
 
     def target_cb(self, data):
-        self.target = data
+        if self.state == State.FOLLOW:
+            self.target = data.linear.x
 
     def odom_cb(self, data):
         self.odom = data
@@ -66,62 +70,102 @@ class Mover:
         quat = data.pose.pose.orientation
         q = [quat.x, quat.y, quat.z, quat.w]
         roll, pitch, yaw = euler_from_quaternion(q)
-        self.theta = yaw
+        self.yaw = yaw
       
     def bumper_cb(self, data):
         self.bumper = data
+        if data.state == CliffEvent.CLIFF:
+            self.ok = False
+            # print "Cliff event: %s,%s"%(str(data.sensor),str(data.state))
+            if   data.sensor == CliffEvent.LEFT:
+                self.theta_goal = self.theta - 3.141592*random.uniform(0.2, 1.0)
+            elif data.sensor == CliffEvent.RIGHT:
+                self.theta_goal = self.theta + 3.141592*random.uniform(0.2, 1.0)
+            else:
+                self.theta_goal = self.wrap_to_pi(self.theta + 3.141592*random.uniform(-1.0, 1.0))
 
     def cliff_cb(self, data):
         self.cliff = data
+        if data.state == BumperEvent.PRESSED:
+            self.ok = False
+            if data.bumper == BumperEvent.LEFT:
+                self.theta_goal = 0
+            elif data.bumper == BumperEvent.RIGHT:
+                self.theta_goal = self.theta + 3.141592*random.uniform(0.2, 1.0)
+            else:
+                self.theta_goal = self.wrap_to_pi(self.theta + 3.141592*random.uniform(-1.0, 1.0))
 
     def command_cb(self, data):
-        self.command = data
-        rospy.loginfo(self.command.data)
-        if self.command.data == 0:
-            self.state = State.STOP
-        elif self.command.data == 1:
-            self.state = State.FOLLOW
-        elif self.command.data >= 2:
-            self.state = State.ORDERED
+        self.command = data.data
+        rospy.loginfo(self.command)
+        # change the states depends on current sate & command
+        # if self.command.data == 0:
+        #     self.state = State.STOP
+        # elif self.command.data == 1:
+        #     self.state = State.FOLLOW
+        # elif self.command.data >= 2:
+        #     self.state = State.ORDERED
 
     def move(self, vel):
         twist = Twist()
         twist.linear.x = vel
-        twist.linear.y = 0
-        twist.linear.z = 0
-        twist.angular.x = 0
-        twist.angular.y = 0
         twist.angular.z = 0
         self.cmd_vel_pub.publish(twist)
 
+    # make a function that follows the angle for s seconds. For s seconds, robot became Oredered mode
+
     def follow(self):
-        x = self.target.linear.x
+        x = self.target
         rospy.loginfo(f"target : {x}")
-        speed = 0.05
+
+        speed = 0.1 # linear speed
+        p = 0.5 # p gain for rotate
+
         if x is None:
             speed = 0
             x = 0
-        p = 0.5
 
         twist = Twist()
         twist.linear.x = speed
-        twist.linear.y = 0
-        twist.linear.z = 0
-        twist.angular.x = 0
-        twist.angular.y = 0
         twist.angular.z = x * p
         self.cmd_vel_pub.publish(twist)
 
+    def get_timer(self, set=None):
+        if set is not None:
+            self.timer_target = set
+        if self.timer_target <= self.timer:
+            self.timer_target = 0
+            self.timer = 0
+            return True
+        return False
+    
+    def update_timer(self):
+        if self.timer_target != 0:
+            self.timer += 1 / 30
+
     def run(self):
         rate = rospy.Rate(30)
+        # implement FSM
         while not rospy.is_shutdown():
-            if self.state == State.ORDERED:
-                if self.command.data == 1: # foward
-                    self.move(0.3)
+            if self.state == State.STOP:
+                self.move(0) # stop
+
+            elif self.state == State.ORDERED:
+                if self.command == 1: # follow
+                    self.state == State.FOLLOW
+                if self.command == 2: # backward
+                    self.move(-0.2)
+                    self.get_timer(1)
+                    self.state = State.EXCUTE
+
+            elif self.state == State.EXCUTE:
+                if self.get_timer():
+                    self.state = State.STOP
+
             elif self.state == State.FOLLOW:
                 self.follow()
-            else:
-                self.move(0)
+
+            self.update_timer()
             rate.sleep()
 
 
