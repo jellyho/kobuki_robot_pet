@@ -9,9 +9,15 @@ mkdir catkin_ws
 cd catkin_ws
 mkdir src
 cd src
-git clone https://github.com/jellyho/kobuki_robot_pet.git
+git clone --recursive https://github.com/jellyho/kobuki_robot_pet.git
+sudo apt get install ros-noetic-ecl-core
+sudo apt install liborocos-kdl-dev
+sudo apt install ros-noetic-joy
+rosdep install --from-paths . --ignore-src -r -y
 cd ..
 catkin_make
+
+rosrun kobuki_ftdi create_udev_rules
 ```
 
 ```
