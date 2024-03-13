@@ -16,9 +16,7 @@ from enum import Enum
 
 class State(Enum):
     STOP = 0
-    ORDERED = 1
-    EXCUTE = 2
-    FOLLOW = 3
+    FOLLOW = 1
 
 
 class Mover:
@@ -40,6 +38,8 @@ class Mover:
         self.state = State.STOP
 
         # Data for movement
+        self.rotate_p = 0.5
+        self.linear_p = 1
         self.timer_target = 0.0
         self.timer = 0.0
 
@@ -115,8 +115,6 @@ class Mover:
     # make a function that follows the angle for s seconds. For s seconds, robot became Oredered mode
 
     def follow(self):
-        x = self.target
-        rospy.loginfo(f"target : {x}")
 
         speed = 0.1 # linear speed
         p = 0.5 # p gain for rotate
@@ -147,24 +145,7 @@ class Mover:
         rate = rospy.Rate(30)
         # implement FSM
         while not rospy.is_shutdown():
-            if self.state == State.STOP:
-                self.move(0) # stop
-
-            elif self.state == State.ORDERED:
-                if self.command == 1: # follow
-                    self.state == State.FOLLOW
-                if self.command == 2: # backward
-                    self.move(-0.2)
-                    self.get_timer(1)
-                    self.state = State.EXCUTE
-
-            elif self.state == State.EXCUTE:
-                if self.get_timer():
-                    self.state = State.STOP
-
-            elif self.state == State.FOLLOW:
-                self.follow()
-
+            self.follow()
             self.update_timer()
             rate.sleep()
 
