@@ -41,7 +41,7 @@ class Percevier:
                     key_int = ord(key)  # Convert character to ASCII integer
                     # Publish the integer topic
                     if key_int == 119: # w
-                        key_int = 1
+                        key_int = 3
                     else:
                         key_int = 0
                     self.command_pub.publish(key_int)

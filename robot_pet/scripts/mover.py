@@ -64,12 +64,12 @@ class Mover:
     def wrap_to_pi(self, x):
         return np.mod(x+np.pi,2*np.pi)-np.pi
     
-    def wrap_to_2pi(x):
+    def wrap_to_2pi(self, x):
         return np.mod(x + 2*np.pi, 4*np.pi) - 2*np.pi
 
     def target_cb(self, data): # following target
         if self.state == State.FOLLOW:
-            self.target.angular.z = self.target.angular.z + data.angular.z # update target
+            self.target.angular.z = self.current.angular.z + data.angular.z # update target
 
     def odom_cb(self, data):
         self.odom = data
@@ -78,58 +78,68 @@ class Mover:
         roll, pitch, yaw = euler_from_quaternion(q)
         self.current.angular.z = yaw
       
-    def bumper_cb(self, data):
-        self.bumper = data
-        if data.state == CliffEvent.CLIFF:
-            self.state = State.EMERGENCY
-            print (f"Cliff event: {str(data.sensor)},{str(data.state)}")
-            if data.sensor == CliffEvent.LEFT:
-                self.target.angular.z = self.current.angular.z + 3.141592 * self.wandering_offset
-            elif data.sensor == CliffEvent.RIGHT:
-                self.target.angular.z = self.current.angular.z - 3.141592 * self.wandering_offset
-            else:
-                self.target.angular.z = self.current.angular.z - 3.141592
-
     def cliff_cb(self, data):
         self.cliff = data
-        if data.state == BumperEvent.PRESSED:
+        if data.state == CliffEvent.CLIFF and self.state != State.EMERGENCY:
+            self.state = State.EMERGENCY
+            if data.sensor == CliffEvent.LEFT:
+                self.set_target(r=self.current.angular.z - 3.141592 * self.wandering_offset)
+            elif data.sensor == CliffEvent.RIGHT:
+                self.set_target(r=self.current.angular.z + 3.141592 * self.wandering_offset)
+            else:
+                self.set_target(r=self.current.angular.z + 3.141592)
+
+    def bumper_cb(self, data):
+        self.bumper = data
+        if data.state == BumperEvent.PRESSED and self.state != State.EMERGENCY:
             self.state = State.EMERGENCY
             if data.bumper == BumperEvent.LEFT:
-                self.target.angular.z = self.current.angular.z + 3.141592 * self.wandering_offset
+                self.set_target(r=self.current.angular.z - 3.141592 * self.wandering_offset)
             elif data.bumper == BumperEvent.RIGHT:
-                self.target.angular.z = self.current.angular.z - 3.141592 * self.wandering_offset
+                self.set_target(r=self.current.angular.z + 3.141592 * self.wandering_offset)
             else:
-                self.target.angular.z = self.current.angular.z - 3.141592
+                self.set_target(r=self.current.angular.z + 3.141592)
 
     def set_target(self, x=None, r=None):
         self.target.linear.x = x if x is not None else self.target.linear.x
         self.target.angular.z = r if r is not None else self.target.angular.z
+        rospy.loginfo(f'Set Target x:{self.target.linear.x}, r:{self.target.angular.z}\n')
 
     def action_spin(self):
         self.set_target(0, self.current.angular.z + 3.141592)
         self.set_timer(2)
 
+    def action_foward(self):
+        self.set_target(0.1, self.current.angular.z)
+        self.set_timer(2)
+
     def command_cb(self, data):
         self.command = data.data
+
+    def fsm(self):
         # implement FSM
         if self.state == State.STOP: #STOP
-            if self.command.data == 0:
+            self.set_target(0, self.current.angular.z)
+            if self.command == 0:
                 self.state = State.STOP
-            elif self.command.data == 1:
+            elif self.command == 1:
                 self.state = State.FOLLOW
-            elif self.command.data >= 2:
-                if self.command.data == 2:
+                self.set_target(x=0.05)
+            elif self.command >= 2:
+                if self.command == 2:
                     self.action_spin()
+                elif self.command == 3:
+                    self.action_foward()
                 self.state = State.WAIT
         elif self.state == State.EMERGENCY: #EMERGENCY
-            self.set_target(x = -0.5)
+            self.set_target(x = -0.2)
             self.set_timer(1)
-            self.state == State.WAIT
+            self.state = State.WAIT
         elif self.state == State.WAIT: #WAIT
             if self.check_timer():
-                self.state == State.STOP  
+                self.state = State.STOP  
         elif self.state == State.FOLLOW:
-            if self.command.data != 1:
+            if self.command != 1:
                 self.state = State.STOP
 
     def follow(self):
@@ -138,7 +148,10 @@ class Mover:
         t_x = self.target.linear.x # target velocity
 
         c_r = self.current.angular.z # from odom
-        t_r = self.wrap_to_2pi(self.target.angular.z) # target angle
+        t_r = self.target.angular.z # target angle
+        
+        if self.state != State.STOP:
+            rospy.loginfo(f'State : {self.state}\n')
 
         twist = Twist()
         if self.state == State.STOP: # direct stop
@@ -163,7 +176,8 @@ class Mover:
         self.timer = 0
     
     def check_timer(self):
-        if self.timer > self.target_target:
+        rospy.loginfo('check_timer')
+        if self.timer > self.timer_target:
             return True
         else:
             self.timer += 1 / 30
@@ -172,6 +186,7 @@ class Mover:
     def run(self):
         rate = rospy.Rate(30)
         while not rospy.is_shutdown():
+            self.fsm()
             self.follow()
             rate.sleep()
 

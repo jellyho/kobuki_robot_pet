@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="robot_pet" type="perceiver_keyop.py" name="perceiver" output="screen"/>
+</launch>
