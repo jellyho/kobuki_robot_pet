@@ -23,7 +23,6 @@ import numpy as np
 import pandas as pd
 import math
 
-##############
 class Percevier:
     def __init__(self):
         rospy.init_node('perceiver', anonymous=True)
@@ -57,7 +56,6 @@ class Percevier:
             'Right', 'Left', 'Foward',
             'Backward'
         ]
-        ##############
 
         self.mp_pose = mp.solutions.pose
         self.pose = self.mp_pose.Pose()
