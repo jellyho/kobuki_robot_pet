@@ -5,6 +5,11 @@ find_package(catkin REQUIRED COMPONENTS kobuki_driver kobuki_node std_msgs senso
 catkin_python_setup()
 catkin_package()
 
+include_directories(
+# include
+  ${catkin_INCLUDE_DIRS}
+)
+
 install(PROGRAMS scripts/mover.py
                  scripts/perceiver_keyop.py
                  scripts/perceiver.py
