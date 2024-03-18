@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
-
-import roslib; roslib.load_manifest('kobuki_testsuite')
-import rospy, sys, random
-
-from tf.transformations import euler_from_quaternion
-from math import degrees
-
-from sensor_msgs.msg import Imu
-from std_msgs.msg import Float32, Int32
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Twist, Quaternion
-from kobuki_msgs.msg import BumperEvent, CliffEvent
-from enum import Enum
-
+import roslib; roslib.load_manifest('robot_pet')
+import rospy, sys
+from std_msgs.msg import Int32
+from robot_pet import wrap_to_pi
 import sys, select, termios, tty
 
 class Percevier:
@@ -36,12 +26,18 @@ class Percevier:
             while not rospy.is_shutdown():
                 key = self.getKey()
                 if key:
-                    rospy.loginfo("Pressed key: {}".format(key))
+                    rospy.loginfo(f"Pressed key: {format(key)}, {ord(key)}")
                     # Convert the key to integer if needed
                     key_int = ord(key)  # Convert character to ASCII integer
                     # Publish the integer topic
                     if key_int == 119: # w
-                        key_int = 1
+                        key_int = 10
+                    elif key_int == 97: # a
+                        key_int = 11
+                    elif key_int == 115: # s
+                        key_int = 12
+                    elif key_int == 100: # d
+                        key_int = 13
                     else:
                         key_int = 0
                     self.command_pub.publish(key_int)
