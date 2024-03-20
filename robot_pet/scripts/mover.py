@@ -131,12 +131,12 @@ class Mover:
         self.set_timer(4)
 
     def action_foward(self):
-        speed = 0.1
+        speed = 0.2
         self.set_target(speed, self.current.angular.z)
         self.set_timer(0.05)
 
     def action_backward(self):
-        speed = 0.1
+        speed = 0.2
         self.set_target(-speed, self.current.angular.z)
         self.set_timer(0.05)
 
