@@ -48,7 +48,7 @@ class Mover:
         # Data for movement
         self.rotate_p = 0.9
         self.linear_p = 0.2
-        self.wandering_offset = 0.5 # 0.5pi = 90degrees
+        self.wandering_offset = 0.3 # 0.5pi = 90degrees
         self.follow_x = True
         self.follow_z = True
         self.timer_set = False
@@ -90,12 +90,13 @@ class Mover:
         rospy.loginfo(self.cliff)
         if data.state == CliffEvent.CLIFF and self.state != State.EMERGENCY:
             self.state = State.EMERGENCY
+            self.target.linear.x = 0
             if data.sensor == CliffEvent.LEFT:
                 self.set_target(r=self.current.angular.z - 3.141592 * self.wandering_offset)
             elif data.sensor == CliffEvent.RIGHT:
                 self.set_target(r=self.current.angular.z + 3.141592 * self.wandering_offset)
             else:
-                self.set_target(r=self.current.angular.z + 3.141592)
+                self.set_target(r=self.current.angular.z + 3.141592 * (random.randint(0, 1)-0.5))
             self.set_target(x=-0.2, follow_z=False)
             self.set_timer(target=2)
 
@@ -103,10 +104,11 @@ class Mover:
         self.bumper = data
         if data.state == BumperEvent.PRESSED and self.state != State.EMERGENCY:
             self.state = State.EMERGENCY
+            self.target.linear.x = 0
             if data.bumper == BumperEvent.LEFT:
                 self.set_target(r=self.current.angular.z - 3.141592 * self.wandering_offset)
             elif data.bumper == BumperEvent.CENTER:
-                self.set_target(r=self.current.angular.z + 3.141592)
+                self.set_target(r=self.current.angular.z + 3.141592 * (random.randint(0, 1)-0.5))
             else:
                 self.set_target(r=self.current.angular.z + 3.141592 * self.wandering_offset)
             self.set_target(x=-0.2, follow_z=False)
@@ -129,24 +131,24 @@ class Mover:
         self.set_timer(4)
 
     def action_foward(self):
-        speed = 0.2
+        speed = 0.1
         self.set_target(speed, self.current.angular.z)
-        self.set_timer(0.1)
+        self.set_timer(0.05)
 
     def action_backward(self):
-        speed = 0.2
+        speed = 0.1
         self.set_target(-speed, self.current.angular.z)
-        self.set_timer(0.1)
+        self.set_timer(0.05)
 
     def action_turn_right(self):
         speed = 1
         self.set_target(0, self.current.angular.z - speed)
-        self.set_timer(0.1)
+        self.set_timer(0.05)
 
     def action_turn_left(self):
         speed = 1
         self.set_target(0, self.current.angular.z + speed)
-        self.set_timer(0.1)
+        self.set_timer(0.05)
 
     def command_cb(self, data):
         self.command = data.data
