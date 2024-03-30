@@ -1,5 +1,12 @@
 <launch>
     <!-- Include kobuki minimal node launch file -->
-    <node pkg="robot_pet" type="mover.py" name="mover.py" output="screen"/>
-    <node pkg="robot_pet" type="perceiver.py" name="perceiver.py" output="screen"/>
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch" >
+        <arg name="align_depth" value="true"/>
+    </include>
+    <include file="$(find yolov8)/launch/yolo.launch" >
+        <arg name="image" value="/camera/color/image_raw"/>
+        <arg name="weights" value="yolov8n-pose.pt"/>
+    </include>
+    <node pkg="robot_pet" type="mover.py" name="mover" output="screen"/>
+    <node pkg="robot_pet" type="perceiver.py" name="perceiver" output="screen"/>
 </launch>

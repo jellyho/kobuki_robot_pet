@@ -46,7 +46,7 @@ class Mover:
         self.state = State.STOP
 
         # Data for movement
-        self.rotate_p = 0.9
+        self.rotate_p = 1.3
         self.linear_p = 0.2
         self.wandering_offset = 0.3 # 0.5pi = 90degrees
         self.follow_x = True
@@ -87,7 +87,6 @@ class Mover:
       
     def cliff_cb(self, data):
         self.cliff = data
-        rospy.loginfo(self.cliff)
         if data.state == CliffEvent.CLIFF and self.state != State.EMERGENCY:
             self.state = State.EMERGENCY
             self.target.linear.x = 0
@@ -152,7 +151,6 @@ class Mover:
 
     def command_cb(self, data):
         self.command = data.data
-        rospy.loginfo(self.command)
 
     def fsm(self):
         # implement FSM
@@ -163,7 +161,7 @@ class Mover:
                 self.state = State.STOP
             elif self.command == 1:
                 self.state = State.FOLLOW
-                self.set_target(x=0.05)
+                self.set_target(x=0.1)
             elif self.command >= 2:
                 if self.command == 2:
                     self.action_spin()
@@ -221,7 +219,7 @@ class Mover:
         self.cmd_vel_pub.publish(twist)
 
     def set_timer(self, target):
-        rospy.loginfo(f'SET TIMER {target}')
+        # rospy.loginfo(f'SET TIMER {target}')
         self.timer_target = target
         self.timer = 0
         self.timer_set = True

@@ -1,27 +1,15 @@
 #!/usr/bin/env python3
 
 import roslib; roslib.load_manifest('kobuki_testsuite')
-import rospy, sys, random, rospkg
-
-from tf.transformations import euler_from_quaternion
-from math import degrees
-
-from sensor_msgs.msg import Imu
-from std_msgs.msg import Float32, Int32
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Twist, Quaternion
-from kobuki_msgs.msg import BumperEvent, CliffEvent
-from enum import Enum
-
-import sys, select, termios, tty
-
-import os
-from keras.models import load_model
+import rospy, rospkg
+from sensor_msgs.msg import Imu, Image
+from std_msgs.msg import Float32, Int32, String
+from geometry_msgs.msg import Twist
+from cv_bridge import CvBridge, CvBridgeError
+import sys, os, math, random, json
 import cv2
-import mediapipe as mp
 import numpy as np
 import pandas as pd
-import math
 
 class Percevier:
     def __init__(self):
@@ -30,136 +18,75 @@ class Percevier:
         self.target_pub = rospy.Publisher("/target", Twist, queue_size=1)
         self.rospack = rospkg.RosPack()
         self.model_weight_dir = self.rospack.get_path('robot_pet') + '/weight/model2.h5'
-        self.torso_size_multiplier = 2.5
-        n_landmarks = 33
-        self.n_dimensions = 3
-        self.threshold = 0.6
-        self.landmark_names = [
-            'nose',
-            'left_eye_inner', 'left_eye', 'left_eye_outer',
-            'right_eye_inner', 'right_eye', 'right_eye_outer',
-            'left_ear', 'right_ear',
-            'mouth_left', 'mouth_right',
-            'left_shoulder', 'right_shoulder',
-            'left_elbow', 'right_elbow',
-            'left_wrist', 'right_wrist',
-            'left_pinky_1', 'right_pinky_1',
-            'left_index_1', 'right_index_1',
-            'left_thumb_2', 'right_thumb_2',
-            'left_hip', 'right_hip',
-            'left_knee', 'right_knee',
-            'left_ankle', 'right_ankle',
-            'left_heel', 'right_heel',
-            'left_foot_index', 'right_foot_index',
-        ]
-        self.class_names = [
-            'Right', 'Left', 'Foward',
-            'Backward'
-        ]
+        self.yolo_image_sub = rospy.Subscriber('/yolo_image', Image, self.yolo_image_cb)
+        self.depth_image_sub = rospy.Subscriber('/camera/aligned_depth_to_color/image_raw', Image, self.depth_cb)
+        self.pose_sub = rospy.Subscriber('/yolo_results', String, callback=self.yolo_cb)
+        self.pose = None
+        self.depth = None
+        self.image = None
+        self.person_th = 0.5
 
-        self.mp_pose = mp.solutions.pose
-        self.pose = self.mp_pose.Pose()
+    def yolo_cb(self, msg):
+        result = json.loads(msg.data)
+        self.pose = result
 
-        self.col_names = []
-        for i in range(n_landmarks):
-            name = self.mp_pose.PoseLandmark(i).name
-            name_x = name + '_X'
-            name_y = name + '_Y'
-            name_z = name + '_Z'
-            name_v = name + '_V'
-            self.col_names.append(name_x)
-            self.col_names.append(name_y)
-            self.col_names.append(name_z)
-            self.col_names.append(name_v)
+    def depth_cb(self, msg):
+        bridge = CvBridge()
+        depth_frame = bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')
+        self.depth = depth_frame
 
-        # Load saved model
-        self.model = load_model(self.model_weight_dir, compile=False)
-
-        # Web-cam
-        self.cap = cv2.VideoCapture(0)
-        self.source_width = int(self.cap.get(3))
-        self.source_height = int(self.cap.get(4))
-
-    def getKey(self):
-        success, img = self.cap.read()
-        if not success:
-            print('[ERROR] Failed to Read Video feed')
-            return 0
-        
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        result = self.pose.process(img_rgb)
-        key = 0
-        if result.pose_landmarks:
-            lm_list = []
-            for landmarks in result.pose_landmarks.landmark:
-                # Preprocessing
-                max_distance = 0
-                lm_list.append(landmarks)
-            center_x = (lm_list[self.landmark_names.index('right_hip')].x +
-                        lm_list[self.landmark_names.index('left_hip')].x)*0.5
-            center_y = (lm_list[self.landmark_names.index('right_hip')].y +
-                        lm_list[self.landmark_names.index('left_hip')].y)*0.5
-
-            shoulders_x = (lm_list[self.landmark_names.index('right_shoulder')].x +
-                            lm_list[self.landmark_names.index('left_shoulder')].x)*0.5
-            shoulders_y = (lm_list[self.landmark_names.index('right_shoulder')].y +
-                            lm_list[self.landmark_names.index('left_shoulder')].y)*0.5
-
-            for lm in lm_list:
-                distance = math.sqrt((lm.x - center_x) **
-                                        2 + (lm.y - center_y)**2)
-                if(distance > max_distance):
-                    max_distance = distance
-            torso_size = math.sqrt((shoulders_x - center_x) **
-                                    2 + (shoulders_y - center_y)**2)
-            max_distance = max(torso_size*self.torso_size_multiplier, max_distance)
-
-            pre_lm = list(np.array([[(landmark.x-center_x)/max_distance, (landmark.y-center_y)/max_distance,
-                                        landmark.z/max_distance, landmark.visibility] for landmark in lm_list]).flatten())
-            data = pd.DataFrame([pre_lm], columns=self.col_names)
-            predict = self.model.predict(data, verbose=0)[0]
-            if max(predict) > self.threshold:
-                key = predict.argmax()
-                pose_class = self.class_names[key]
-                img = cv2.circle(img, (int((center_x)*self.source_width) ,int(self.source_height / 2)), 10, (0, 255, 0), -1)
-                # publish target
-                twist = Twist()
-                twist.angular.z = -(center_x - 0.5)
-                self.target_pub.publish(twist)
-                key += 1
-            else:
-                pose_class = 'Unknown Pose'
-                twist = Twist()
-                twist.angular.z = 0
-                self.target_pub.publish(twist)
-                key = 0
-            # Show Result
-            img = cv2.putText(
-                img, f'{pose_class}',
-                (40, 50), cv2.FONT_HERSHEY_PLAIN,
-                2, (255, 0, 255), 2
-            )
-        cv2.imshow('Output Image', img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            return
-        return key
+    def yolo_image_cb(self, msg):
+        bridge = CvBridge()
+        frame = bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
+        self.image = frame
 
     def run(self):
         while not rospy.is_shutdown():
-            key = self.getKey()
-            if key:
-                rospy.loginfo("Current pose: {}".format(key))
-                if key in [1, 2, 3, 4]:
+            if self.pose is None:
+                # send zero target
+                twist = Twist()
+                twist.angular.z = 0
+                self.target_pub.publish(twist)
+                # No person. STOP
+                self.command_pub.publish(0)
+                continue
+            else:
+                valid_people = []
+                # append real people
+                for person in self.pose:
+                    if person['confidence'] > self.person_th:
+                        valid_people.append(person)
+
+                # simple following
+                if len(valid_people) > 0 and self.image is not None and self.depth is not None:
+                    target = valid_people[0]
+                    person_center = (target['box']['x1'] + target['box']['x2']) / 2, (target['box']['y1'] + target['box']['y2']) / 2
+                    # distance ?
+                    distance = None
+                    if self.depth is not None:
+                        mean_dst = np.mean(self.depth[int(target['box']['y1']):int(target['box']['y2'])][int(target['box']['x1']):int(target['box']['x2'])])
+                        print(mean_dst)
+
+                    twist = Twist()
+                    twist.angular.z = -(person_center[0] / self.image.shape[1] - 0.5)
+                    self.target_pub.publish(twist)
                     self.command_pub.publish(1) # Follow
                 else:
-                    self.command_pub.publish(0) # Stop
+                    self.command_pub.publish(0)
+                
+            # key = self.getKey()
+            # if key:
+            #     rospy.loginfo("Current pose: {}".format(key))
+            #     if key in [1, 2, 3, 4]:
+            #         self.command_pub.publish(1) # Follow
+            #     else:
+            #         self.command_pub.publish(0) # Stop
 
 
 
 if __name__ == "__main__":
     node = Percevier()
     node.run()
-    node.cap.release()
     cv2.destroyAllWindows()
     print('[INFO] Inference on Videostream is Ended...')
     rospy.spin()
