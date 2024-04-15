@@ -18,6 +18,15 @@ cd ..
 catkin_make
 
 rosrun kobuki_ftdi create_udev_rules
+
+sudo apt-get install ros-noetic-realsense2-camera
+sudo apt-get install ros-noetic-realsense2-description
+
+cd src
+git clone --recursive https://github.com/jellyho/yolov8-ros1.git
+pip install ultralytics
+cd ..
+catkin_make
 ```
 
 ```
