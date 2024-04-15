@@ -13,7 +13,7 @@ import pandas as pd
 import torch, time
 
 rospack = rospkg.RosPack()
-FacePath = rospack.get_path('robot_pet') + f'/face_recognition/'
+FacePath = rospack.get_path('robot_pet') + f'/face-recognition/'
 os.chdir(FacePath)
 sys.path.append(os.path.abspath(FacePath))
 
