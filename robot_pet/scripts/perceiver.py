@@ -79,12 +79,9 @@ class Percevier:
 
         self.person_th = 0.5
 
-    def image_subscriber(self, image_msg):
-        bridge = CvBridge()
+    def face_detect(self):
         try:
-            frame = bridge.imgmsg_to_cv2(image_msg, desired_encoding="rgb8")
-            current_img = frame
-            self.datas['raw_image'] = frame
+            current_img = self.datas['raw_image']
             outputs, img_info, bboxes, landmarks = self.face_detector.detect_tracking(image=current_img)
 
             tracking_tlwhs = []
@@ -146,6 +143,32 @@ class Percevier:
         except CvBridgeError as e:
             rospy.logerr(e)        
 
+    def image_subscriber(self, image_msg):
+        bridge = CvBridge()
+        self.datas['raw_image'] = bridge.imgmsg_to_cv2(image_msg, desired_encoding="rgb8")
+        
+        p = True
+        for k in self.datas.keys():
+            if len(self.datas[k]) == 0:
+                p = False
+                break
+        if not p:
+            if isinstance(self.datas['raw_image'], np.ndarray):
+                ros_image = bridge.cv2_to_imgmsg(self.datas['raw_image'], encoding="rgb8")
+                self.prcessed_pub.publish(ros_image)
+            return
+        processed_img = utils.plot_tracking(self.datas['raw_image'],
+                                    self.datas['pose_detections'],
+                                    self.datas['object_detections'],
+                                    self.datas['face_tracking_tlwhs'],
+                                    self.datas['face_tracking_ids'],
+                                    names = self.datas["id_face_mapping"],
+                                    frame_id = 1,
+                                    fps = 0.0
+        )
+        ros_image = bridge.cv2_to_imgmsg(processed_img, encoding="rgb8")
+        self.prcessed_pub.publish(ros_image)
+
     def info_cb(self, msg):
         self.fx = msg.K[0]
         self.fy = msg.K[4]
@@ -156,9 +179,26 @@ class Percevier:
         result = json.loads(msg.data)
         self.datas['pose_detections'] = result[0]['keypoints']
 
+        true_labels = []
+        predicted_labels = []
+        class_names = ['Stop', 'Start', 'Unknown', 'Unknown', 'Unknown']
+        # obj_class_names = ['sports ball']
+        col_names = [
+            '0_X', '0_Y', '1_X', '1_Y', '2_X', '2_Y', '3_X', '3_Y', '4_X', '4_Y', '5_X', '5_Y', 
+            '6_X', '6_Y', '7_X', '7_Y', '8_X', '8_Y', '9_X', '9_Y', '10_X', '10_Y', '11_X', '11_Y', 
+            '12_X', '12_Y', '13_X', '13_Y', '14_X', '14_Y', '15_X', '15_Y', '16_X', '16_Y'
+        ]
+        confidence_threshold = 0.5
+        # pose = 
+
+
+
     def yolo_detection_cb(self, msg):
         result = json.loads(msg.data)
         self.datas['object_detections'] = result
+
+        desired_class_ids = list(range(32, 34))  # 30, 31, 32, 33에 해당하는 객체만 선택
+        
 
     def depth_cb(self, msg):
         bridge = CvBridge()
@@ -172,25 +212,8 @@ class Percevier:
 
     def run(self):
         while not rospy.is_shutdown():
-            p = True
-            for k in self.datas.keys():
-                if len(self.datas[k]) == 0:
-                    p = False
-                    break
-            if not p:
-                continue
-            processed_img = utils.plot_tracking(self.datas['raw_image'],
-                                        self.datas['pose_detections'],
-                                        self.datas['object_detections'],
-                                        self.datas['face_tracking_tlwhs'],
-                                        self.datas['face_tracking_ids'],
-                                        names = self.datas["id_face_mapping"],
-                                        frame_id = 1,
-                                        fps = 0.0
-            )
-            bridge = CvBridge()
-            ros_image = bridge.cv2_to_imgmsg(processed_img, encoding="rgb8")
-            self.prcessed_pub.publish(ros_image)
+            if isinstance(self.datas['raw_image'], np.ndarray):
+                self.face_detect()
 
             if self.pose is None:
                 # send zero target
