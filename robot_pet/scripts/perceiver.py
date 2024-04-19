@@ -36,13 +36,13 @@ class Percevier:
         self.datas = {
             "raw_image": [],
             "pose_detections": [],
-            'object_detections': [],
             "id_face_mapping": {},
             "face_bboxes": [],
             "face_landmarks": [],
             "face_tracking_ids": [],
             "face_tracking_bboxes": [],
-            "face_tracking_tlwhs": []
+            "face_tracking_tlwhs": [],
+            "ball_detections": []
         }
 
         self.model_weight_dir = rospack.get_path('robot_pet') + '/weight/model2.h5'
@@ -146,20 +146,10 @@ class Percevier:
     def image_subscriber(self, image_msg):
         bridge = CvBridge()
         self.datas['raw_image'] = bridge.imgmsg_to_cv2(image_msg, desired_encoding="rgb8")
-        
-        p = True
-        for k in self.datas.keys():
-            if len(self.datas[k]) == 0:
-                p = False
-                break
-        if not p:
-            if isinstance(self.datas['raw_image'], np.ndarray):
-                ros_image = bridge.cv2_to_imgmsg(self.datas['raw_image'], encoding="rgb8")
-                self.prcessed_pub.publish(ros_image)
-            return
+
         processed_img = utils.plot_tracking(self.datas['raw_image'],
                                     self.datas['pose_detections'],
-                                    self.datas['object_detections'],
+                                    self.datas['ball_detections'],
                                     self.datas['face_tracking_tlwhs'],
                                     self.datas['face_tracking_ids'],
                                     names = self.datas["id_face_mapping"],
@@ -191,14 +181,22 @@ class Percevier:
         confidence_threshold = 0.5
         # pose = 
 
-
-
     def yolo_detection_cb(self, msg):
         result = json.loads(msg.data)
-        self.datas['object_detections'] = result
+        # self.datas['object_detections'] = result
 
         desired_class_ids = list(range(32, 34))  # 30, 31, 32, 33에 해당하는 객체만 선택
         
+        for box in result:
+            # {'name': 'cell phone', 'class': 67, 'confidence': 0.3291623592376709, 'box': {'x1': 473.850341796875, 'y1': 349.98773193359375, 'x2': 690.062255859375, 'y2': 554.2743530273438}}
+            if box['class'] in desired_class_ids:
+                bbox = box['box']
+                box_width_px = bbox['x2'] + bbox['x1']
+
+                distance_cm = utils.estimate_distance(box_width_px)
+                self.datas['ball_detections'] = {'box':bbox, 'distance':distance_cm}
+            else:
+                self.datas['ball_detections'] = {}
 
     def depth_cb(self, msg):
         bridge = CvBridge()
