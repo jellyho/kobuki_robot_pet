@@ -66,27 +66,6 @@ def read_frames():
             frame_count = 0
             start_time = time.time_ns()
 
-
-        try:
-            datas['master_pose'] = []
-            for i, face_id in enumerate(datas['face_tracking_ids']):
-                face_id = int(face_id)
-                if face_id in datas["id_face_mapping"] and datas["id_face_mapping"][face_id] != 'UN_KNOWN':
-
-                    # find matching keypoint
-                    for pose in datas['pose_detections'][0]:
-                        keypoints = pose.keypoints.xy.squeeze()
-                        nose = keypoints[0]
-                        # left_eye = keypoints[1]
-                        # right_eye = keypoints[2]
-                        x, y, w, h = datas['face_tracking_tlwhs'][i]
-                        box_coords = (x, y, x + w, y + h)
-
-                        if jung_utils.is_inside_box(nose, box_coords):
-                            datas['master_pose'].append(pose)
-        except Exception as e:
-            print(e)
-
         try:
             img = jung_utils.plot_tracking(datas['raw_image'],
                                         datas['master_pose'],
@@ -183,6 +162,7 @@ def detect_poses():
     pose_detector = YOLO('yolov8n-pose.pt').to(device)
 
     while True:
+        # get pose
         try:
             current_img = datas['raw_image']
             # results = pose_detector.predict(current_img)
@@ -193,6 +173,30 @@ def detect_poses():
         except Exception as e:
             print("Error in detecting poses")
             print(e)
+
+        # get master pose
+        try:
+
+            datas['master_pose'] = []
+            for i, face_id in enumerate(datas['face_tracking_ids']):
+                face_id = int(face_id)
+                if face_id in datas["id_face_mapping"] and datas["id_face_mapping"][face_id] != 'UN_KNOWN':
+
+                    # find matching keypoint
+                    for pose in datas['pose_detections'][0]:
+                        keypoints = pose.keypoints.xy.squeeze()
+                        nose = keypoints[0]
+                        # left_eye = keypoints[1]
+                        # right_eye = keypoints[2]
+                        x, y, w, h = datas['face_tracking_tlwhs'][i]
+                        box_coords = (x, y, x + w, y + h)
+
+                        if jung_utils.is_inside_box(nose, box_coords):
+                            datas['master_pose'].append(pose)
+        except Exception as e:
+            print(e)
+
+
 
 def detect_objects():
     object_detector = YOLO("yolov8n.pt").to(device)
