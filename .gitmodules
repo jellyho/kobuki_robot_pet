@@ -1,6 +1,0 @@
-[submodule "kobuki"]
-	path = kobuki
-	url = https://github.com/yujinrobot/kobuki.git
-[submodule "robot_pet/face-recognition"]
-	path = robot_pet/face-recognition
-	url = https://github.com/vectornguyen76/face-recognition.git
