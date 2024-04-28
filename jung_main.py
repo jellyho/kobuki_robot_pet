@@ -9,11 +9,12 @@ from torchvision import transforms
 from face_alignment.alignment import norm_crop
 from face_detection.scrfd.detector import SCRFD
 from face_detection.yolov5_face.detector import Yolov5Face
-from face_recognition.arcface.model import iresnet_inference
+from face_recognition.arcface.model import arcface_inference
 from face_recognition.arcface.utils import compare_encodings, read_features
 from face_tracking.tracker.byte_tracker import BYTETracker
 
 from ultralytics import YOLO
+from face_recognition.adaface.model import adaface_inference
 import jung_utils
 
 # Device configuration
@@ -92,9 +93,17 @@ def detect_faces():
     tracker = BYTETracker(args= tracker_config, frame_rate=30)
 
     # Face recognizer
-    face_recognizer = iresnet_inference(
+    face_recognizer = arcface_inference(
         model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device
     )
+    face_recognizer = adaface_inference(
+        model_name = 'r18', path = 'face_recognition/adaface/weights/adaface_ir18_webface4m.ckpt', device= device
+    )
+
+    face_recognizer = adaface_inference(
+        model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device
+    )
+
 
     # Load precomputed face features and names
     images_names, images_embs = read_features(feature_path="./datasets/face_features/feature")
@@ -126,35 +135,51 @@ def detect_faces():
                         tracking_ids.append(tid)
                         tracking_scores.append(t.score)
 
+                datas["face_bboxes"] = bboxes
+                datas["face_landmarks"] = landmarks
                 datas['face_tracking_tlwhs'] = tracking_tlwhs
-                datas['face_tracking_ids'] = tracking_ids
+                datas["face_tracking_ids"] = tracking_ids
+                datas["face_tracking_bboxes"] = tracking_bboxes
 
-                for i in range(len(tracking_bboxes)):
-                    for j in range(len(bboxes)):
-                        mapping_score = jung_utils.mapping_bbox(box1=tracking_bboxes[i], box2=bboxes[j])
-                        if mapping_score > 0.9:
-                            face_alignment = norm_crop(img= current_img, landmark= landmarks[j])
-
-                            # Get feature from face
-                            face_image = jung_utils.preprocess(face_alignment)
-                            emb_img_face = face_recognizer(face_image.to(device)).detach().cpu().numpy()
-                            query_emb = emb_img_face / np.linalg.norm(emb_img_face)
-
-                            score, id_min = compare_encodings(query_emb, images_embs)
-                            name = images_names[id_min]
-                            score = score[0]
-
-                            if name is not None:
-                                if score < 0.25:
-                                    caption = "UN_KNOWN"
-                                else:
-                                    caption = f"{name}:{score:.2f}"
-                            datas['id_face_mapping'][tracking_ids[i]] = caption
-                            bboxes = np.delete(bboxes, j, axis=0)
-                            landmarks = np.delete(landmarks, j, axis=0)
 
         except Exception as e:
             print("Error in detecting faces")
+            print(e)
+
+        try:
+            raw_image = datas["raw_image"]
+            detection_landmarks = datas["face_landmarks"]
+            detection_bboxes = datas["face_bboxes"]
+            tracking_ids = datas["face_tracking_ids"]
+            tracking_bboxes = datas["face_tracking_bboxes"]
+
+            for i in range(len(tracking_bboxes)):
+                for j in range(len(detection_bboxes)):
+                    mapping_score = jung_utils.mapping_bbox(box1=tracking_bboxes[i], box2=detection_bboxes[j])
+                    if mapping_score > 0.9:
+                        face_alignment = norm_crop(img=raw_image, landmark=detection_landmarks[j])
+
+                        # Get feature from face
+                        face_image = jung_utils.preprocess(face_alignment, type = 'bgr')
+                        emb_img_face = face_recognizer(face_image.to(device)).detach().cpu().numpy()
+                        query_emb = emb_img_face / np.linalg.norm(emb_img_face)
+
+                        score, id_min = compare_encodings(query_emb, images_embs)
+                        name = images_names[id_min]
+                        score = score[0]
+
+                        if name is not None:
+                            if score < 0.25:
+                                caption = "UN_KNOWN"
+                            else:
+                                caption = f"{name}:{score:.2f}"
+                        datas['id_face_mapping'][datas["face_tracking_ids"][i]] = caption
+
+                        detection_bboxes = np.delete(detection_bboxes, j, axis=0)
+                        detection_landmarks = np.delete(detection_landmarks, j, axis=0)
+
+        except Exception as e:
+            print("Error in recognizing faces")
             print(e)
 
 def detect_poses():

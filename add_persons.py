@@ -9,8 +9,11 @@ from torchvision import transforms
 
 from face_detection.scrfd.detector import SCRFD
 from face_detection.yolov5_face.detector import Yolov5Face
-from face_recognition.arcface.model import iresnet_inference
+from face_recognition.arcface.model import arcface_inference
 from face_recognition.arcface.utils import read_features
+
+from face_recognition.adaface.model import adaface_inference
+import jung_utils
 
 # Check if CUDA is available and set the device accordingly
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -20,9 +23,17 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_2.5g_bnkps.onnx")
 
 # Initialize the face recognizer
-recognizer = iresnet_inference(
+recognizer = arcface_inference(
     model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device
 )
+
+recognizer = adaface_inference(
+        model_name = 'r18', path = 'face_recognition/adaface/weights/adaface_ir18_webface4m.ckpt', device= device
+    )
+
+recognizer = adaface_inference(
+        model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device
+    )
 
 
 @torch.no_grad()
@@ -36,20 +47,7 @@ def get_feature(face_image):
     Returns:
         numpy.ndarray: Extracted facial features.
     """
-    # Define a series of image preprocessing steps
-    face_preprocess = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize((112, 112)),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ]
-    )
-
-    # Convert the image to RGB format
-    face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
-
-    # Apply the defined preprocessing to the image
-    face_image = face_preprocess(face_image).unsqueeze(0).to(device)
+    face_image = jung_utils.preprocess(face_image, type = 'bgr').to(device)
 
     # Use the model to obtain facial features
     emb_img_face = recognizer(face_image)[0].cpu().numpy()

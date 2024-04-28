@@ -220,7 +220,7 @@ def iresnet200(pretrained=False, progress=True, **kwargs):
     return _iresnet("iresnet200", IBasicBlock, [6, 26, 60, 6], pretrained, progress, **kwargs)
 
 
-def iresnet_inference(model_name, path, device="cuda"):
+def arcface_inference(model_name, path, device="cuda"):
     if model_name == "r18":
         model = iresnet18()
     elif model_name == "r34":

@@ -21,7 +21,7 @@ def load_config(file_name):
             print(exc)
 
 @torch.no_grad()
-def preprocess(face_image):
+def preprocess(face_image, type = 'rgb'):
     """
     Extract features from a face image.
 
@@ -40,7 +40,8 @@ def preprocess(face_image):
     )
 
     # Convert to RGB
-    face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+    if type == 'rgb':
+        face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
 
     # Preprocess image (BGR)
     face_image = face_preprocess(face_image).unsqueeze(0)

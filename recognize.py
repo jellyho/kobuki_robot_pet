@@ -10,7 +10,7 @@ from torchvision import transforms
 from face_alignment.alignment import norm_crop
 from face_detection.scrfd.detector import SCRFD
 from face_detection.yolov5_face.detector import Yolov5Face
-from face_recognition.arcface.model import iresnet_inference
+from face_recognition.arcface.model import arcface_inference
 from face_recognition.arcface.utils import compare_encodings, read_features
 from face_tracking.tracker.byte_tracker import BYTETracker
 from face_tracking.tracker.visualize import plot_tracking
@@ -23,7 +23,7 @@ detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_2.5g_bnkps.onnx"
 # detector = Yolov5Face(model_file="face_detection/yolov5_face/weights/yolov5n-face.pt")
 
 # Face recognizer
-recognizer = iresnet_inference(
+recognizer = arcface_inference(
     model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device
 )
 
