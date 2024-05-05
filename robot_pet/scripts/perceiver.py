@@ -28,8 +28,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class Percevier:
     def __init__(self):
         rospy.init_node('perceiver', anonymous=True)
-        self.command_pub = rospy.Publisher("/internal_command", Int32, queue_size=1)
-        self.target_pub = rospy.Publisher("/target", Twist, queue_size=1)
+        self.command_pub = rospy.Publisher("/robot/command", Int32, queue_size=1)
+        self.target_pub = rospy.Publisher("/robot/target", Twist, queue_size=1)
         self.prcessed_pub = rospy.Publisher('/robot/image', Image, queue_size=1)
         # self.pc_pub = rospy.Publisher("/person_pc", PointCloud2, queue_size=1)
 
@@ -38,6 +38,7 @@ class Percevier:
             "pose_keypoints": [],
             "pose_box":[],
             "pose_class":[],
+            "pose_id":[],
             "id_face_mapping": {},
             "face_bboxes": [],
             "face_landmarks": [],
@@ -79,6 +80,8 @@ class Percevier:
         self.fy = 0
         self.cx = 0
         self.cy = 0
+
+        self.command = 0
 
         self.person_th = 0.5
 
@@ -177,7 +180,7 @@ class Percevier:
 
     def pose_classification(self):
         result = self.pose
-        if len(result) > 0:
+        if result and len(result) > 0:
             pose = result[0]['keypoints']
             box = result[0]['box']
 
@@ -191,8 +194,7 @@ class Percevier:
             x, y, conf = pose['x'], pose['y'], pose['visible']
             lm_list = [[int(xx), int(yy)] for xx, yy in zip(x, y)]
 
-            # if np.sum(np.array(conf) > 0.1) >= 17:
-            if True:
+            if np.sum(np.array(conf) > 0.1) >= 17:
                 pre_lm = utils.norm_kpts(lm_list)
                 data = pd.DataFrame([pre_lm], columns=col_names)
                 predict = self.pose_model.predict(data, verbose=0)[0]
@@ -204,10 +206,17 @@ class Percevier:
                 self.datas['pose_box'] = box
                 self.datas['pose_keypoints'] = lm_list
                 self.datas['pose_class'] = pose_class
+                self.datas['pose_id'] = predict.argmax()
+            else:
+                self.datas['pose_box'] = box
+                self.datas['pose_keypoints'] = {}
+                self.datas['pose_class'] = {}
+                self.datas['pose_id'] = {}
         else:
             self.datas['pose_box'] = {}
             self.datas['pose_keypoints'] = {}
             self.datas['pose_class'] = {}
+            self.datas['pose_id'] = {}
 
     def yolo_detection_cb(self, msg):
         result = json.loads(msg.data)
@@ -249,33 +258,22 @@ class Percevier:
                 continue
             else:
                 self.pose_classification()
-                valid_people = []
-                # append real people
-                for person in self.pose:
-                    if person['confidence'] > self.person_th:
-                        valid_people.append(person)
-
+                if self.command == 0:
+                    if self.datas['pose_id'] == 1:
+                        self.command = 1
+                elif self.command == 1:
+                    if self.datas['pose_id'] == 0:
+                        self.command = 0
                 # simple following
-                if len(valid_people) > 0 and self.image is not None and self.depth is not None:
-                    target = valid_people[0]
-                    person_center = (target['box']['x1'] + target['box']['x2']) / 2, (target['box']['y1'] + target['box']['y2']) / 2
+                if len(self.datas['pose_box']) > 0 and isinstance(self.datas['raw_image'], np.ndarray):
+                    target = self.datas['pose_box']
+                    person_center = (target['x1'] + target['x2']) / 2, (target['y1'] + target['y2']) / 2
                     distance = None
 
                     twist = Twist()
-                    twist.angular.z = -(person_center[0] / self.image.shape[1] - 0.5)
+                    twist.angular.z = -(person_center[0] / self.datas['raw_image'].shape[1] - 0.5)
                     self.target_pub.publish(twist)
-                    self.command_pub.publish(1) # Follow
-                else:
-                    self.command_pub.publish(0)
-                
-            key = self.getKey()
-            if key:
-                rospy.loginfo("Current pose: {}".format(key))
-                if key in [1, 2, 3, 4]:
-                    self.command_pub.publish(1) # Follow
-                else:
-                    self.command_pub.publish(0) # Stop
-
+                self.command_pub.publish(self.command)
 
 
 if __name__ == "__main__":

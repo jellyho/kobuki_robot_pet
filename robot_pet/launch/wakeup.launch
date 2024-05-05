@@ -1,13 +1,30 @@
 <launch>
     <!-- Include kobuki minimal node launch file -->
+    <include file="$(find kobuki_node)/launch/minimal.launch"/>
+    <!-- Include Realsense -->
     <include file="$(find realsense2_camera)/launch/rs_camera.launch" >
         <arg name="align_depth" value="true"/>
+        <arg name="color_width" value="640"/>
+        <arg name="color_height" value="480"/>
+        <arg name="enable_depth" value="false"/>
+        <arg name="depth_width" value="640"/>
+        <arg name="depth_height" value="480"/>
     </include>
+    <!-- Include yolov8 for pose -->
     <include file="$(find yolov8)/launch/yolo.launch" >
         <arg name="image" value="/camera/color/image_raw"/>
         <arg name="weights" value="yolov8n-pose.pt"/>
+        <arg name="name" value="pose"/>
+        <arg name="publish" value="false"/>
     </include>
-    <include file="$(find kobuki_node)/launch/minimal.launch"/>
+    <!-- Include yolov8 for detection -->
+    <include file="$(find yolov8)/launch/yolo.launch" >
+        <arg name="image" value="/camera/color/image_raw"/>
+        <arg name="weights" value="yolov8n.pt"/>
+        <arg name="name" value="detection"/>
+        <arg name="publish" value="false"/>
+    </include>
+    <!-- Include Controllers -->
     <node pkg="robot_pet" type="mover.py" name="mover" output="screen"/>
     <node pkg="robot_pet" type="perceiver.py" name="perceiver" output="screen"/>
 </launch>

@@ -62,8 +62,8 @@ class Mover:
 
 
         self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_cb)
-        self.command_sub = rospy.Subscriber("/internal_command", Int32, self.command_cb)
-        self.target_sub = rospy.Subscriber("/target", Twist, self.target_cb)
+        self.command_sub = rospy.Subscriber("/robot/command", Int32, self.command_cb)
+        self.target_sub = rospy.Subscriber("/robot/target", Twist, self.target_cb)
 
         # Publisher
         self.cmd_vel_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=1)
