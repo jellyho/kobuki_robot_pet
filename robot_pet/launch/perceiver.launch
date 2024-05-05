@@ -25,4 +25,8 @@
     <!-- Include Controllers -->
     <node pkg="robot_pet" type="mover.py" name="mover" output="screen"/>
     <node pkg="robot_pet" type="perceiver.py" name="perceiver" output="screen"/>
+
+    <include file="$(find recorder)/launch/record.launch">
+        <arg name="topic" value="/robot/image"/>
+    </include>
 </launch>
