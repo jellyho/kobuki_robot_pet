@@ -9,6 +9,9 @@ import h5py
 import math
 import random
 
+person_color = [random.randint(0, 255) for _ in range(3)]
+ball_color = [random.randint(0, 255) for _ in range(3)]
+
 def sign(x):
     if x > 0: return +1
     if x < 0: return -1
@@ -97,7 +100,7 @@ def get_color(idx):
 
     return color
 def plot_tracking(
-    image, pose_detection, ball_detection, tlwhs, obj_ids, scores=None, frame_id=0, fps=0.0, ids2=None, names=[]
+    image, pose_keypoints, pose_box, pose_class, ball_detection, tlwhs, obj_ids, scores=None, frame_id=0, fps=0.0, ids2=None, names=[]
 ):
     im = np.ascontiguousarray(np.copy(image))
     im_h, im_w = im.shape[:2]
@@ -109,7 +112,11 @@ def plot_tracking(
     line_thickness = 3
 
     if ball_detection and len(ball_detection) > 0:
-        plot_one_box(list(ball_detection['box'].values()), im, label=f"ball:{ball_detection['distance']:2f}m")
+        plot_one_box(list(ball_detection['box'].values()), im, color='ball', label=f"ball:{ball_detection['distance']:2f}m")
+
+    if len(pose_box) > 0 and len(pose_keypoints) > 0:
+        plot_one_box(list(pose_box.values()), im, color='person', label=f'{pose_class}')
+        plot_skeleton_kpts(im, np.array(pose_keypoints), radius=5, line_thick=2, confi=0.5)
 
     radius = max(5, int(im_w / 140.0))
     cv2.putText(
@@ -144,23 +151,6 @@ def plot_tracking(
                 (0, 0, 255),
                 thickness=text_thickness,
             )
-
-
-    # for result in pose_detection:
-    #     result.orig_img = im
-    #     im = result.plot()
-
-    #     # print(result.keypoints.data.detach().cpu().numpy())
-    #     #print(result.keypoints.data)
-    #     # cv2.drawKeypoints(im, result.keypoints.data)
-
-    #     #for result in object_detection:
-    #     #    print(result.keypoints.data)
-
-    # for result in object_detection:
-    #     result.orig_img = im
-    #     im = result.plot()
-
 
     return im
 
@@ -204,7 +194,7 @@ def plot_skeleton_kpts(im, kpts, radius=5, shape=(640, 640), confi=0.5, line_thi
 
 # Normalize Keypoints
 def norm_kpts(lm_list, torso_size_multiplier=2.5):
-    max_distance = 0
+    max_distance = 1
     center_x = (lm_list[12][0] +       # right_hip
                 lm_list[11][0])*0.5    # left_hip
     center_y = (lm_list[12][1] +       # right_hip
@@ -215,10 +205,10 @@ def norm_kpts(lm_list, torso_size_multiplier=2.5):
     shoulders_y = (lm_list[6][1] +       # right_shoulder
                     lm_list[5][1])*0.5   # left_shoulder
     
-    if max_distance == 0:
-        # max_distance가 0이면 경고를 출력하고 기본 값 설정
-        print("Warning: max_distance is 0, setting to default value to avoid division by zero.")
-        max_distance = 1  # 기본값 설정 (예: 1)
+    # if max_distance == 0:
+    #     # max_distance가 0이면 경고를 출력하고 기본 값 설정
+    #     print("Warning: max_distance is 0, setting to default value to avoid division by zero.")
+    #     max_distance = 1  # 기본값 설정 (예: 1)
         
     for lm in lm_list:
         distance = math.sqrt(
@@ -242,7 +232,12 @@ def norm_kpts(lm_list, torso_size_multiplier=2.5):
 def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     # Plots one bounding box on image img
     tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
-    color = color or [random.randint(0, 255) for _ in range(3)]
+    if color == 'ball':
+        color = ball_color
+    elif color == 'person':
+        color = person_color
+    else:
+        color = [random.randint(0, 255) for _ in range(3)]
     c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
     cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
     if label:

@@ -35,7 +35,9 @@ class Percevier:
 
         self.datas = {
             "raw_image": [],
-            "pose_detections": [],
+            "pose_keypoints": [],
+            "pose_box":[],
+            "pose_class":[],
             "id_face_mapping": {},
             "face_bboxes": [],
             "face_landmarks": [],
@@ -45,7 +47,8 @@ class Percevier:
             "ball_detections": []
         }
 
-        self.model_weight_dir = rospack.get_path('robot_pet') + '/weight/model2.h5'
+        self.model_weight_dir = rospack.get_path('robot_pet') + '/weight/model.h5'
+        self.pose_model, _ = utils.load_model_ext(self.model_weight_dir)
         # Face detector (choose one)
         self.face_detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_2.5g_bnkps.onnx")
 
@@ -148,7 +151,9 @@ class Percevier:
         self.datas['raw_image'] = bridge.imgmsg_to_cv2(image_msg, desired_encoding="rgb8")
 
         processed_img = utils.plot_tracking(self.datas['raw_image'],
-                                    self.datas['pose_detections'],
+                                    self.datas['pose_keypoints'],
+                                    self.datas['pose_box'],
+                                    self.datas['pose_class'],
                                     self.datas['ball_detections'],
                                     self.datas['face_tracking_tlwhs'],
                                     self.datas['face_tracking_ids'],
@@ -166,29 +171,50 @@ class Percevier:
         self.cy = msg.K[5]
 
     def yolo_pose_cb(self, msg):
-        result = json.loads(msg.data)
-        self.datas['pose_detections'] = result[0]['keypoints']
+        if msg:
+            self.pose = json.loads(msg.data)
+        
 
-        true_labels = []
-        predicted_labels = []
-        class_names = ['Stop', 'Start', 'Unknown', 'Unknown', 'Unknown']
-        # obj_class_names = ['sports ball']
-        col_names = [
-            '0_X', '0_Y', '1_X', '1_Y', '2_X', '2_Y', '3_X', '3_Y', '4_X', '4_Y', '5_X', '5_Y', 
-            '6_X', '6_Y', '7_X', '7_Y', '8_X', '8_Y', '9_X', '9_Y', '10_X', '10_Y', '11_X', '11_Y', 
-            '12_X', '12_Y', '13_X', '13_Y', '14_X', '14_Y', '15_X', '15_Y', '16_X', '16_Y'
-        ]
-        confidence_threshold = 0.5
-        # pose = 
+    def pose_classification(self):
+        result = self.pose
+        if len(result) > 0:
+            pose = result[0]['keypoints']
+            box = result[0]['box']
+
+            class_names = ['Stop', 'Start', 'Unknown', 'Unknown', 'Unknown']
+            col_names = [
+                '0_X', '0_Y', '1_X', '1_Y', '2_X', '2_Y', '3_X', '3_Y', '4_X', '4_Y', '5_X', '5_Y', 
+                '6_X', '6_Y', '7_X', '7_Y', '8_X', '8_Y', '9_X', '9_Y', '10_X', '10_Y', '11_X', '11_Y', 
+                '12_X', '12_Y', '13_X', '13_Y', '14_X', '14_Y', '15_X', '15_Y', '16_X', '16_Y'
+            ]
+
+            x, y, conf = pose['x'], pose['y'], pose['visible']
+            lm_list = [[int(xx), int(yy)] for xx, yy in zip(x, y)]
+
+            # if np.sum(np.array(conf) > 0.1) >= 17:
+            if True:
+                pre_lm = utils.norm_kpts(lm_list)
+                data = pd.DataFrame([pre_lm], columns=col_names)
+                predict = self.pose_model.predict(data, verbose=0)[0]
+
+                if max(predict) > 0.6:
+                    pose_class = class_names[predict.argmax()]
+                else:
+                    pose_class = 'Unknown Pose'
+                self.datas['pose_box'] = box
+                self.datas['pose_keypoints'] = lm_list
+                self.datas['pose_class'] = pose_class
+        else:
+            self.datas['pose_box'] = {}
+            self.datas['pose_keypoints'] = {}
+            self.datas['pose_class'] = {}
 
     def yolo_detection_cb(self, msg):
         result = json.loads(msg.data)
-        # self.datas['object_detections'] = result
 
         desired_class_ids = list(range(32, 34))  # 30, 31, 32, 33에 해당하는 객체만 선택
         
         for box in result:
-            # {'name': 'cell phone', 'class': 67, 'confidence': 0.3291623592376709, 'box': {'x1': 473.850341796875, 'y1': 349.98773193359375, 'x2': 690.062255859375, 'y2': 554.2743530273438}}
             if box['class'] in desired_class_ids:
                 bbox = box['box']
                 box_width_px = bbox['x2'] + bbox['x1']
@@ -222,6 +248,7 @@ class Percevier:
                 self.command_pub.publish(0)
                 continue
             else:
+                self.pose_classification()
                 valid_people = []
                 # append real people
                 for person in self.pose:
@@ -241,13 +268,13 @@ class Percevier:
                 else:
                     self.command_pub.publish(0)
                 
-            # key = self.getKey()
-            # if key:
-            #     rospy.loginfo("Current pose: {}".format(key))
-            #     if key in [1, 2, 3, 4]:
-            #         self.command_pub.publish(1) # Follow
-            #     else:
-            #         self.command_pub.publish(0) # Stop
+            key = self.getKey()
+            if key:
+                rospy.loginfo("Current pose: {}".format(key))
+                if key in [1, 2, 3, 4]:
+                    self.command_pub.publish(1) # Follow
+                else:
+                    self.command_pub.publish(0) # Stop
 
 
 

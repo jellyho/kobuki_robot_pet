@@ -1,10 +1,13 @@
 <launch>
     <!-- Include kobuki minimal node launch file -->
     <!-- Include Realsense -->
+    <arg name="record" default="false"/>
+
     <include file="$(find realsense2_camera)/launch/rs_camera.launch" >
         <arg name="align_depth" value="true"/>
         <arg name="color_width" value="640"/>
         <arg name="color_height" value="480"/>
+        <arg nme="enable_depth" value="false"/>
         <arg name="depth_width" value="640"/>
         <arg name="depth_height" value="480"/>
     </include>
