@@ -54,11 +54,6 @@ def is_inside_box(point, box):
     x_max, y_max = box[2:]
     return x_min <= x <= x_max and y_min <= y <= y_max
 
-def get_eye_coordinates(keypoints):
-    left_eye_coordinates = keypoints[1]
-    right_eye_coordinates = keypoints[2]
-    return left_eye_coordinates, right_eye_coordinates
-
 def mapping_bbox(box1, box2):
     """
     Calculate the Intersection over Union (IoU) between two bounding boxes.

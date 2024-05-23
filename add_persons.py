@@ -23,9 +23,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_2.5g_bnkps.onnx")
 
 # Initialize the face recognizer
-recognizer = arcface_inference(
-    model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device
-)
+#recognizer = arcface_inference(
+#    model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device
+#)
 
 recognizer = adaface_inference(
         model_name = 'r18', path = 'face_recognition/adaface/weights/adaface_ir18_webface4m.ckpt', device= device

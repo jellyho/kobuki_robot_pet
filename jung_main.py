@@ -86,19 +86,19 @@ def read_frames():
 def detect_faces():
 
     # Face detector (choose one)
-    face_detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_2.5g_bnkps.onnx")
+    face_detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_10g_bnkps.onnx")
 
     # face_detector = Yolov5Face(model_file="face_detection/yolov5_face/weights/yolov5n-face.pt")
     tracker_config = jung_utils.load_config("./face_tracking/config/config_tracking.yaml")
     tracker = BYTETracker(args= tracker_config, frame_rate=30)
 
     # Face recognizer
-    face_recognizer = arcface_inference(
-        model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device
-    )
-    face_recognizer = adaface_inference(
-        model_name = 'r18', path = 'face_recognition/adaface/weights/adaface_ir18_webface4m.ckpt', device= device
-    )
+    #face_recognizer = arcface_inference(
+    #    model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device
+    #)
+    #face_recognizer = adaface_inference(
+    #    model_name = 'r18', path = 'face_recognition/adaface/weights/adaface_ir18_webface4m.ckpt', device= device
+    #)
 
     face_recognizer = adaface_inference(
         model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device
@@ -147,17 +147,12 @@ def detect_faces():
             print(e)
 
         try:
-            raw_image = datas["raw_image"]
-            detection_landmarks = datas["face_landmarks"]
-            detection_bboxes = datas["face_bboxes"]
-            tracking_ids = datas["face_tracking_ids"]
-            tracking_bboxes = datas["face_tracking_bboxes"]
 
             for i in range(len(tracking_bboxes)):
-                for j in range(len(detection_bboxes)):
-                    mapping_score = jung_utils.mapping_bbox(box1=tracking_bboxes[i], box2=detection_bboxes[j])
+                for j in range(len(bboxes)):
+                    mapping_score = jung_utils.mapping_bbox(box1=tracking_bboxes[i], box2= bboxes[j])
                     if mapping_score > 0.9:
-                        face_alignment = norm_crop(img=raw_image, landmark=detection_landmarks[j])
+                        face_alignment = norm_crop(img= current_img, landmark= landmarks[j])
 
                         # Get feature from face
                         face_image = jung_utils.preprocess(face_alignment, type = 'bgr')
@@ -169,14 +164,14 @@ def detect_faces():
                         score = score[0]
 
                         if name is not None:
-                            if score < 0.25:
+                            if score < 0.3:
                                 caption = "UN_KNOWN"
                             else:
                                 caption = f"{name}:{score:.2f}"
                         datas['id_face_mapping'][datas["face_tracking_ids"][i]] = caption
 
-                        detection_bboxes = np.delete(detection_bboxes, j, axis=0)
-                        detection_landmarks = np.delete(detection_landmarks, j, axis=0)
+                        bboxes = np.delete(bboxes, j, axis=0)
+                        landmarks = np.delete(landmarks, j, axis=0)
 
         except Exception as e:
             print("Error in recognizing faces")
@@ -184,7 +179,7 @@ def detect_faces():
 
 def detect_poses():
     # Pose detection
-    pose_detector = YOLO('yolov8n-pose.pt').to(device)
+    pose_detector = YOLO('yolov8s-pose.pt').to(device)
 
     while True:
         # get pose
@@ -201,7 +196,6 @@ def detect_poses():
 
         # get master pose
         try:
-
             datas['master_pose'] = []
             for i, face_id in enumerate(datas['face_tracking_ids']):
                 face_id = int(face_id)
@@ -218,13 +212,14 @@ def detect_poses():
 
                         if jung_utils.is_inside_box(nose, box_coords):
                             datas['master_pose'].append(pose)
+
         except Exception as e:
             print(e)
 
 
 
 def detect_objects():
-    object_detector = YOLO("yolov8n.pt").to(device)
+    object_detector = YOLO("yolov8s.pt").to(device)
     while True:
         try:
             current_img = datas['raw_image']
