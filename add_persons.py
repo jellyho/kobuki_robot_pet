@@ -27,14 +27,17 @@ detector = SCRFD(model_file="face_detection/scrfd/weights/scrfd_2.5g_bnkps.onnx"
 #    model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device
 #)
 
-recognizer = adaface_inference(
-        model_name = 'r18', path = 'face_recognition/adaface/weights/adaface_ir18_webface4m.ckpt', device= device
-    )
+#recognizer = adaface_inference(
+#        model_name = 'r18', path = 'face_recognition/adaface/weights/adaface_ir18_webface4m.ckpt', device= device
+#    )
+
+#recognizer = adaface_inference(
+#        model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device
+#    )
 
 recognizer = adaface_inference(
-        model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device
+        model_name='r101', path='face_recognition/adaface/weights/adaface_ir101_webface12m.ckpt', device=device
     )
-
 
 @torch.no_grad()
 def get_feature(face_image):

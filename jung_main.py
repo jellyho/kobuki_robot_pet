@@ -14,6 +14,8 @@ from face_recognition.arcface.utils import compare_encodings, read_features
 from face_tracking.tracker.byte_tracker import BYTETracker
 
 from ultralytics import YOLO
+from retinaface import RetinaFace
+
 from face_recognition.adaface.model import adaface_inference
 import jung_utils
 
@@ -33,7 +35,9 @@ datas = {
     "face_landmarks": [],
     "face_tracking_ids": [],
     "face_tracking_bboxes": [],
-    "face_tracking_tlwhs": []
+    "face_tracking_tlwhs": [],
+
+    "face_check_time": {}
 }
 
 def read_frames():
@@ -100,8 +104,12 @@ def detect_faces():
     #    model_name = 'r18', path = 'face_recognition/adaface/weights/adaface_ir18_webface4m.ckpt', device= device
     #)
 
+    #face_recognizer = adaface_inference(
+    #    model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device
+    #)
+
     face_recognizer = adaface_inference(
-        model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device
+        model_name='r101', path='face_recognition/adaface/weights/adaface_ir101_webface12m.ckpt', device=device
     )
 
 
@@ -112,6 +120,11 @@ def detect_faces():
         try:
             current_img = datas['raw_image']
             outputs, img_info, bboxes, landmarks = face_detector.detect_tracking(image= current_img)
+            ##
+            #resp = RetinaFace.detect_faces(current_img)
+            #print(resp)
+            ##
+
 
             tracking_tlwhs = []
             tracking_ids = []
@@ -147,31 +160,35 @@ def detect_faces():
             print(e)
 
         try:
-
             for i in range(len(tracking_bboxes)):
                 for j in range(len(bboxes)):
-                    mapping_score = jung_utils.mapping_bbox(box1=tracking_bboxes[i], box2= bboxes[j])
-                    if mapping_score > 0.9:
-                        face_alignment = norm_crop(img= current_img, landmark= landmarks[j])
 
-                        # Get feature from face
-                        face_image = jung_utils.preprocess(face_alignment, type = 'bgr')
-                        emb_img_face = face_recognizer(face_image.to(device)).detach().cpu().numpy()
-                        query_emb = emb_img_face / np.linalg.norm(emb_img_face)
+                    face_exist = datas["face_tracking_ids"][i] in datas['id_face_mapping']
+                    face_time = time.time() - 1 > datas['face_check_time'].get(datas["face_tracking_ids"][i], -1)
+                    if not face_exist or face_time:
+                        mapping_score = jung_utils.mapping_bbox(box1=tracking_bboxes[i], box2=bboxes[j])
+                        if mapping_score > 0.9:
+                            face_alignment = norm_crop(img= current_img, landmark= landmarks[j])
 
-                        score, id_min = compare_encodings(query_emb, images_embs)
-                        name = images_names[id_min]
-                        score = score[0]
+                            # Get feature from face
+                            face_image = jung_utils.preprocess(face_alignment, type = 'bgr')
+                            emb_img_face = face_recognizer(face_image.to(device)).detach().cpu().numpy()
+                            query_emb = emb_img_face / np.linalg.norm(emb_img_face)
 
-                        if name is not None:
-                            if score < 0.3:
-                                caption = "UN_KNOWN"
-                            else:
-                                caption = f"{name}:{score:.2f}"
-                        datas['id_face_mapping'][datas["face_tracking_ids"][i]] = caption
+                            score, id_min = compare_encodings(query_emb, images_embs)
+                            name = images_names[id_min]
+                            score = score[0]
 
-                        bboxes = np.delete(bboxes, j, axis=0)
-                        landmarks = np.delete(landmarks, j, axis=0)
+                            if name is not None:
+                                if score < 0.3:
+                                    caption = "UN_KNOWN"
+                                else:
+                                    caption = f"{name}:{score:.2f}"
+                            datas['id_face_mapping'][datas["face_tracking_ids"][i]] = caption
+                            datas['face_check_time'][datas["face_tracking_ids"][i]] = time.time()
+
+                            bboxes = np.delete(bboxes, j, axis=0)
+                            landmarks = np.delete(landmarks, j, axis=0)
 
         except Exception as e:
             print("Error in recognizing faces")
@@ -179,7 +196,7 @@ def detect_faces():
 
 def detect_poses():
     # Pose detection
-    pose_detector = YOLO('yolov8s-pose.pt').to(device)
+    pose_detector = YOLO('yolov8m-pose.pt').to(device)
 
     while True:
         # get pose
@@ -219,7 +236,7 @@ def detect_poses():
 
 
 def detect_objects():
-    object_detector = YOLO("yolov8s.pt").to(device)
+    object_detector = YOLO("yolov8m.pt").to(device)
     while True:
         try:
             current_img = datas['raw_image']
