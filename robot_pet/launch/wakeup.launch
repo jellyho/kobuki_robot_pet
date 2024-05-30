@@ -30,5 +30,6 @@
 
     <include file="$(find recorder)/launch/record.launch">
         <arg name="topic" value="/robot/image"/>
+        <arg name="decoding" default="bgr8"/>
     </include>
 </launch>

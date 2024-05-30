@@ -11,6 +11,7 @@ import sys, os, math, random, json, time, cv2
 import numpy as np
 import pandas as pd
 import torch, time
+from kobuki_msgs.msg import Sound
 
 rospack = rospkg.RosPack()
 FacePath = rospack.get_path('robot_pet') + f'/face-recognition/'
@@ -23,6 +24,9 @@ from face_recognition.arcface.model import iresnet_inference
 from face_recognition.arcface.utils import compare_encodings, read_features
 from face_tracking.tracker.byte_tracker import BYTETracker
 import utils
+
+from face_recognition.adaface.model import adaface_inference
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Percevier:
@@ -35,6 +39,7 @@ class Percevier:
 
         self.datas = {
             "raw_image": [],
+            "master_pose": [],
             "pose_keypoints": [],
             "pose_box":[],
             "pose_class":[],
@@ -45,7 +50,8 @@ class Percevier:
             "face_tracking_ids": [],
             "face_tracking_bboxes": [],
             "face_tracking_tlwhs": [],
-            "ball_detections": []
+            "ball_detections": [],
+            "status": None
         }
 
         self.model_weight_dir = rospack.get_path('robot_pet') + '/weight/model.h5'
@@ -58,8 +64,8 @@ class Percevier:
         self.tracker = BYTETracker(args=self.tracker_config, frame_rate=30)
 
         # Face recognizer
-        self.face_recognizer = iresnet_inference(model_name="r18", path="face_recognition/arcface/weights/arcface_r18.pth", device=device)
-
+        # self.face_recognizer = iresnet_inference(model_name="r50", path="face_recognition/arcface/weights/arcface_r50.pth", device=device)
+        self.face_recognizer = adaface_inference(model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device)
         # Load precomputed face features and names
         self.images_names, self.images_embs = read_features(feature_path="./datasets/face_features/feature")
 
@@ -71,6 +77,10 @@ class Percevier:
         self.detection_sub = rospy.Subscriber('/detection/yolo_results', String, callback=self.yolo_detection_cb)
         self.camera_info = rospy.Subscriber('/camera/color/camera_info', CameraInfo, self.info_cb)
 
+        self.sounds = [Sound.ON, Sound.OFF, Sound.RECHARGE, Sound.BUTTON, Sound.ERROR, Sound.CLEANINGSTART, Sound.CLEANINGEND]
+        self.texts = ["On", "Off", "Recharge", "Button", "Error", "CleaningStart", "CleaningEnd"]
+        self.sound_pub = rospy.Publisher('/mobile_base/commands/sound', Sound)
+
         self.pose = None
         self.detection = None
         self.depth = None
@@ -80,74 +90,84 @@ class Percevier:
         self.fy = 0
         self.cx = 0
         self.cy = 0
+        self.ball_tolerance = 0
 
         self.command = 0
 
         self.person_th = 0.5
 
     def face_detect(self):
-        try:
-            current_img = self.datas['raw_image']
-            outputs, img_info, bboxes, landmarks = self.face_detector.detect_tracking(image=current_img)
-
-            tracking_tlwhs = []
-            tracking_ids = []
-            tracking_scores = []
-            tracking_bboxes = []
-
-            if outputs is not None:
-                online_targets = self.tracker.update(outputs, [img_info["height"], img_info["width"]], (128, 128))
-                for i in range(len(online_targets)):
-                    t = online_targets[i]
-                    tlwh = t.tlwh
-                    tid = t.track_id
-                    vertical = tlwh[2] / tlwh[3] > self.tracker_config["aspect_ratio_thresh"]
-                    if tlwh[2] * tlwh[3] > self.tracker_config["min_box_area"] and not vertical:
-                        x1, y1, w, h = tlwh
-                        tracking_bboxes.append([x1, y1, x1 + w, y1 + h])
-                        tracking_tlwhs.append(tlwh)
-                        tracking_ids.append(tid)
-                        tracking_scores.append(t.score)
-
-            self.datas["face_bboxes"] = bboxes
-            self.datas["face_landmarks"] = landmarks
-            self.datas['face_tracking_tlwhs'] = tracking_tlwhs
-            self.datas["face_tracking_ids"] = tracking_ids
-            self.datas["face_tracking_bboxes"] = tracking_bboxes
-
-            detection_landmarks = self.datas["face_landmarks"]
-            detection_bboxes = self.datas["face_bboxes"]
-            tracking_ids = self.datas["face_tracking_ids"]
-            tracking_bboxes = self.datas["face_tracking_bboxes"]
+        if self.datas['status'] != 'kyunghoon':
             try:
-                for i in range(len(tracking_bboxes)):
-                    for j in range(len(detection_bboxes)):
-                        mapping_score = utils.mapping_bbox(box1=tracking_bboxes[i], box2=detection_bboxes[j])
-                        if mapping_score > 0.9:
-                            face_alignment = norm_crop(img=current_img, landmark=detection_landmarks[j])
+                current_img = self.datas['raw_image']
+                outputs, img_info, bboxes, landmarks = self.face_detector.detect_tracking(image=current_img)
 
-                            # Get feature from face
-                            face_image = utils.preprocess(face_alignment)
-                            emb_img_face = self.face_recognizer(face_image.to(device)).detach().cpu().numpy()
-                            query_emb = emb_img_face / np.linalg.norm(emb_img_face)
+                tracking_tlwhs = []
+                tracking_ids = []
+                tracking_scores = []
+                tracking_bboxes = []
 
-                            score, id_min = compare_encodings(query_emb, self.images_embs)
-                            name = self.images_names[id_min]
-                            score = score[0]
-                            if name is not None:
-                                if score < 0.25:
-                                    caption = "UN_KNOWN"
-                                else:
-                                    caption = f"{name}:{score:.2f}"
-                            self.datas['id_face_mapping'][tracking_ids[i]] = caption
-                            detection_bboxes = np.delete(detection_bboxes, j, axis=0)
-                            detection_landmarks = np.delete(detection_landmarks, j, axis=0)
-                            break
-            except Exception as e:
-                print("Error in recognizing faces")
-                print(e)
-        except CvBridgeError as e:
-            rospy.logerr(e)        
+                if outputs is not None:
+                    online_targets = self.tracker.update(outputs, [img_info["height"], img_info["width"]], (128, 128))
+                    for i in range(len(online_targets)):
+                        t = online_targets[i]
+                        tlwh = t.tlwh
+                        tid = t.track_id
+                        vertical = tlwh[2] / tlwh[3] > self.tracker_config["aspect_ratio_thresh"]
+                        if tlwh[2] * tlwh[3] > self.tracker_config["min_box_area"] and not vertical:
+                            x1, y1, w, h = tlwh
+                            tracking_bboxes.append([x1, y1, x1 + w, y1 + h])
+                            tracking_tlwhs.append(tlwh)
+                            tracking_ids.append(tid)
+                            tracking_scores.append(t.score)
+                else:
+                    return None
+
+                self.datas["face_bboxes"] = bboxes
+                self.datas["face_landmarks"] = landmarks
+                self.datas['face_tracking_tlwhs'] = tracking_tlwhs
+                self.datas["face_tracking_ids"] = tracking_ids
+                self.datas["face_tracking_bboxes"] = tracking_bboxes
+
+                detection_landmarks = self.datas["face_landmarks"]
+                detection_bboxes = self.datas["face_bboxes"]
+                tracking_ids = self.datas["face_tracking_ids"]
+                tracking_bboxes = self.datas["face_tracking_bboxes"]
+                try:
+                    for i in range(len(tracking_bboxes)):
+                        for j in range(len(detection_bboxes)):
+                            mapping_score = utils.mapping_bbox(box1=tracking_bboxes[i], box2=detection_bboxes[j])
+                            if mapping_score > 0.9:
+                                face_alignment = norm_crop(img=current_img, landmark=detection_landmarks[j])
+
+                                # Get feature from face
+                                face_image = utils.preprocess(face_alignment, type = 'bgr')
+                                emb_img_face = self.face_recognizer(face_image.to(device)).detach().cpu().numpy()
+                                query_emb = emb_img_face / np.linalg.norm(emb_img_face)
+
+                                score, id_min = compare_encodings(query_emb, self.images_embs)
+                                name = self.images_names[id_min]
+                                score = score[0]
+                                if name is not None:
+                                    if score < 0.4:
+                                        caption = "UN_KNOWN"
+                                    else:
+                                        caption = f"{name}:{score:.2f}"
+                                        self.datas['status'] = name
+                                        msg = Sound()
+                                        msg.value = Sound.CLEANINGSTART
+                                        self.sound_pub.publish(msg)
+                                        # rospy.sleep(1)
+                                        # self.sound_pub.__subclasshook__
+
+                                self.datas['id_face_mapping'][tracking_ids[i]] = caption
+                                detection_bboxes = np.delete(detection_bboxes, j, axis=0)
+                                detection_landmarks = np.delete(detection_landmarks, j, axis=0)
+                except Exception as e:
+                    print("Error in recognizing faces")
+                    print(e)
+            except CvBridgeError as e:
+                rospy.logerr(e)        
 
     def image_subscriber(self, image_msg):
         bridge = CvBridge()
@@ -179,8 +199,9 @@ class Percevier:
         
 
     def pose_classification(self):
-        result = self.pose
-        if result and len(result) > 0:
+        result = self.pose        
+
+        if self.datas['status'] == 'kyunghoon' and result and len(result) > 0:
             pose = result[0]['keypoints']
             box = result[0]['box']
 
@@ -219,19 +240,26 @@ class Percevier:
             self.datas['pose_id'] = {}
 
     def yolo_detection_cb(self, msg):
-        result = json.loads(msg.data)
+        if self.datas['status'] == 'kyunghoon':
+            result = json.loads(msg.data)
 
-        desired_class_ids = list(range(32, 34))  # 30, 31, 32, 33에 해당하는 객체만 선택
-        
-        for box in result:
-            if box['class'] in desired_class_ids:
-                bbox = box['box']
-                box_width_px = bbox['x2'] + bbox['x1']
+            desired_class_ids = list(range(32, 34))  # 30, 31, 32, 33에 해당하는 객체만 선택
+            
+            for box in result:
+                if box['class'] in desired_class_ids:
+                    bbox = box['box']
+                    box_width_px = bbox['x2'] + bbox['x1']
 
-                distance_cm = utils.estimate_distance(box_width_px)
-                self.datas['ball_detections'] = {'box':bbox, 'distance':distance_cm}
-            else:
-                self.datas['ball_detections'] = {}
+                    distance_cm = utils.estimate_distance(box_width_px)
+                    self.datas['ball_detections'] = {'box':bbox, 'distance':distance_cm}
+                    self.ball_tolerance = 0
+                else:
+                    self.ball_tolerance += 1
+                    if self.ball_tolerance < 30:
+                        pass
+                    else:
+                        self.datas['ball_detections'] = {}
+                        self.ball_tolerance = 0
 
     def depth_cb(self, msg):
         bridge = CvBridge()
@@ -247,33 +275,44 @@ class Percevier:
         while not rospy.is_shutdown():
             if isinstance(self.datas['raw_image'], np.ndarray):
                 self.face_detect()
-
-            if self.pose is None:
-                # send zero target
-                twist = Twist()
-                twist.angular.z = 0
-                self.target_pub.publish(twist)
-                # No person. STOP
-                self.command_pub.publish(0)
-                continue
-            else:
-                self.pose_classification()
-                if self.command == 0:
-                    if self.datas['pose_id'] == 1:
-                        self.command = 1
-                elif self.command == 1:
-                    if self.datas['pose_id'] == 0:
-                        self.command = 0
-                # simple following
-                if len(self.datas['pose_box']) > 0 and isinstance(self.datas['raw_image'], np.ndarray):
-                    target = self.datas['pose_box']
-                    person_center = (target['x1'] + target['x2']) / 2, (target['y1'] + target['y2']) / 2
-                    distance = None
-
+            if self.datas['status'] == 'kyunghoon':
+                if self.datas['ball_detections'] and len(self.datas['ball_detections']) > 0:
+                    detection = self.datas['ball_detections']
+                    if detection['distance'] > 0:
+                        self.command_pub.publish(1)
+                        box = detection['box']
+                        ball_center = (box['x1'] + box['x2']) / 2 ,  (box['y1'] + box['y2']) / 2
+                        twist = Twist()
+                        twist.angular.z = -(ball_center[0] / self.datas['raw_image'].shape[1] - 0.5)
+                        self.target_pub.publish(twist)
+                    else:
+                        self.command_pub.publish(0)
+                elif self.pose is None:
+                    # send zero target
                     twist = Twist()
-                    twist.angular.z = -(person_center[0] / self.datas['raw_image'].shape[1] - 0.5)
+                    twist.angular.z = 0
                     self.target_pub.publish(twist)
-                self.command_pub.publish(self.command)
+                    # No person. STOP
+                    self.command_pub.publish(0)
+                    continue
+                else:
+                    self.pose_classification()
+                    if self.command == 0:
+                        if self.datas['pose_id'] == 1:
+                            self.command = 1
+                    elif self.command == 1:
+                        if self.datas['pose_id'] == 0:
+                            self.command = 0
+                    # simple following
+                    if len(self.datas['pose_box']) > 0 and isinstance(self.datas['raw_image'], np.ndarray):
+                        target = self.datas['pose_box']
+                        person_center = (target['x1'] + target['x2']) / 2, (target['y1'] + target['y2']) / 2
+                        distance = None
+
+                        twist = Twist()
+                        twist.angular.z = -(person_center[0] / self.datas['raw_image'].shape[1] - 0.5)
+                        self.target_pub.publish(twist)
+                    self.command_pub.publish(self.command)
 
 
 if __name__ == "__main__":

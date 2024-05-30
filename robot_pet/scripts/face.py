@@ -24,6 +24,8 @@ from face_recognition.arcface.utils import compare_encodings, read_features
 from face_tracking.tracker.byte_tracker import BYTETracker
 import utils
 
+from face_recognition.adaface.model import adaface_inference
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Face:
@@ -50,8 +52,9 @@ class Face:
         self.tracker = BYTETracker(args=self.tracker_config, frame_rate=30)
 
         # Face recognizer
-        self.face_recognizer = iresnet_inference(model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device)
-
+        #self.face_recognizer = iresnet_inference(model_name="r34", path="face_recognition/arcface/weights/arcface_r34.pth", device=device)
+        self.face_recognizer = adaface_inference(model_name='r50', path='face_recognition/adaface/weights/adaface_ir50_webface4m.ckpt', device=device)
+        
         # Load precomputed face features and names
         self.images_names, self.images_embs = read_features(feature_path="./datasets/face_features/feature")
         
@@ -101,7 +104,7 @@ class Face:
                             face_alignment = norm_crop(img=current_img, landmark=detection_landmarks[j])
 
                             # Get feature from face
-                            face_image = utils.preprocess(face_alignment)
+                            face_image = utils.preprocess(face_alignment,type= 'bgr')
                             emb_img_face = self.face_recognizer(face_image.to(device)).detach().cpu().numpy()
                             query_emb = emb_img_face / np.linalg.norm(emb_img_face)
 

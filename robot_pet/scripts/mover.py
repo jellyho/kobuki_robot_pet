@@ -46,7 +46,7 @@ class Mover:
         self.state = State.STOP
 
         # Data for movement
-        self.rotate_p = 1.3
+        self.rotate_p = 3
         self.linear_p = 0.2
         self.wandering_offset = 0.3 # 0.5pi = 90degrees
         self.follow_x = True
@@ -162,8 +162,11 @@ class Mover:
             elif self.command == 1:
                 self.state = State.FOLLOW
                 self.set_target(x=0.1)
+            elif self.command == 2:
+                self.state = State.FOLLOW
+                self.set_target(x=0.8)
             elif self.command >= 2:
-                if self.command == 2:
+                if self.command == 3:
                     self.action_spin()
                 ########### keyop ##################
                 elif self.command == 10:
