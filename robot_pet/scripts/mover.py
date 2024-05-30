@@ -126,7 +126,8 @@ class Mover:
         # rospy.loginfo(f'Set Target x:{self.target.linear.x}, r:{self.target.angular.z}')
 
     def action_spin(self):
-        self.set_target(0, self.current.angular.z + np.pi * 2)
+        speed = 1
+        self.set_target(0, self.current.angular.z-6)# + np.pi * 2)
         self.set_timer(4)
 
     def action_foward(self):
@@ -220,6 +221,7 @@ class Mover:
                 twist.angular.z = (t_r - c_r) * self.rotate_p
 
         self.cmd_vel_pub.publish(twist)
+        # print(twist)
 
     def set_timer(self, target):
         # rospy.loginfo(f'SET TIMER {target}')
@@ -235,6 +237,7 @@ class Mover:
             return True
         else:
             self.timer += 1 / 30
+            # print(self.timer_target, self.timer, self.state)
             return False
 
     def run(self):

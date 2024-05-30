@@ -97,6 +97,7 @@ class Percevier:
         self.person_th = 0.5
 
     def face_detect(self):
+        self.datas['status'] = 'kyunghoon'
         if self.datas['status'] != 'kyunghoon':
             try:
                 current_img = self.datas['raw_image']
@@ -167,7 +168,14 @@ class Percevier:
                     print("Error in recognizing faces")
                     print(e)
             except CvBridgeError as e:
-                rospy.logerr(e)        
+                rospy.logerr(e)       
+        else:
+            self.datas["face_bboxes"] = []
+            self.datas["face_landmarks"] = []
+            self.datas['face_tracking_tlwhs'] = []
+            self.datas["face_tracking_ids"] = []
+            self.datas["face_tracking_bboxes"] = []
+            self.datas['id_face_mapping'] = {}
 
     def image_subscriber(self, image_msg):
         bridge = CvBridge()
@@ -253,10 +261,17 @@ class Percevier:
                     distance_cm = utils.estimate_distance(box_width_px)
                     self.datas['ball_detections'] = {'box':bbox, 'distance':distance_cm}
                     self.ball_tolerance = 0
-                else:
+                elif 'box' in self.datas['ball_detections']:
                     self.ball_tolerance += 1
                     if self.ball_tolerance < 30:
-                        pass
+                        box = self.datas['ball_detections']['box']
+                        center = (box['x1'] + box['x2']) / 2
+                        if center > self.datas['raw_image'].shape[1]:
+                            box['x1'] += 10
+                            box['x2'] += 10
+                        if center < self.datas['raw_image'].shape[1]:
+                            box['x1'] -= 10
+                            box['x2'] -= 10
                     else:
                         self.datas['ball_detections'] = {}
                         self.ball_tolerance = 0
@@ -300,9 +315,14 @@ class Percevier:
                     if self.command == 0:
                         if self.datas['pose_id'] == 1:
                             self.command = 1
+                        elif self.datas['pose_id'] == 0:
+                            self.command = 3
+                            print('spin!!!')
                     elif self.command == 1:
-                        if self.datas['pose_id'] == 0:
+                        if self.datas['pose_id'] == 2:
                             self.command = 0
+                    elif self.command == 3:
+                        self.command = 0
                     # simple following
                     if len(self.datas['pose_box']) > 0 and isinstance(self.datas['raw_image'], np.ndarray):
                         target = self.datas['pose_box']
