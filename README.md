@@ -41,3 +41,14 @@ source ~/catkin_ws/devel/setup.bash
 ```
 roslaunch robot_pet wakeup.launch
 ```
+
+![image](https://github.com/user-attachments/assets/048ea613-027f-489a-851f-9866c9350e70)
+
+![image](https://github.com/user-attachments/assets/c59cb6ae-fa21-4965-80fa-74df451a0c86)
+![image](https://github.com/user-attachments/assets/4df57d98-5352-47e3-a268-7061a6b50dc4)
+
+
+
+
+
+
